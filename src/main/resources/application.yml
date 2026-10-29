@@ -18,6 +18,10 @@ spring:
 gamepulse:
   service:
     version: 0.1.0-SNAPSHOT
+  matchmaking:
+    base-tolerance: 100
+    expansion-rate-per-sec: 5
+    max-tolerance: 1000
 
 management:
   endpoints:
