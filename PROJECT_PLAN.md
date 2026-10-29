@@ -1,7 +1,7 @@
 # GamePulse Engineering Roadmap & Project Plan
 
 ## Project Vision & Context
-**Target Program**: Electronic Arts Software Engineering / DevOps Internship  
+**Context**: Production-Grade Distributed Gameplay Services & Reliability Engineering  
 **Project**: GamePulse — Chaos-Resilient Gameplay Services Platform  
 **Architecture**: Modular Monolith → Event-Driven Scalable Backend  
 **Core Question**: *Can we demonstrate, with repeatable experiments, how backend reliability engineering protects a multiplayer gaming service when dependencies fail or traffic increases?*
@@ -13,7 +13,7 @@
 | Phase | Title | Branch | PR # | PR Status | Review Status | CI Quality Gate |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Phase 0** | Repository & Project Foundation | `feat/phase0-project-foundation` | [#1](https://github.com/rohith-chitturi/GamePulse/pull/1) | MERGED | Approved | Passing |
-| **Phase 1** | Gameplay Backend Services | `feat/phase1-gameplay-backend` | [#2](https://github.com/rohith-chitturi/GamePulse/pull/2) | OPEN | Approved (Self-Review / CI Verified) | Passing |
+| **Phase 1** | Gameplay Backend Services | `feat/phase1-gameplay-backend` | [#2](https://github.com/rohith-chitturi/GamePulse/pull/2) | MERGED | Approved | Passing |
 | **Phase 2** | Data Integrity & Concurrency | `feat/phase2-data-integrity-concurrency` | - | Planned | - | - |
 | **Phase 3** | Redis & Service Resilience | `feat/phase3-redis-resilience` | - | Planned | - | - |
 | **Phase 4** | Observability & Telemetry | `feat/phase4-observability-telemetry` | - | Planned | - | - |
@@ -109,4 +109,4 @@
 - **Goals**:
   - End-to-end audit, security check, clean documentation, reproduction guide, and engineering case study.
 - **Acceptance Criteria**:
-  - Production-ready portfolio artifact for EA Gameplay Services review.
+  - Production-ready portfolio artifact for gameplay services backend engineering.

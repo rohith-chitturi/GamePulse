@@ -2,7 +2,7 @@
 
 ## 1. System Overview & Context
 
-GamePulse is a production-minded gameplay services platform simulating the backend infrastructure supporting real-time online multiplayer games (such as EA SPORTS FC, Apex Legends, or Battlefield).
+GamePulse is a production-minded gameplay services platform simulating the backend infrastructure supporting real-time online multiplayer games (such as competitive multiplayer shooters, sports simulations, or battle arenas).
 
 The platform models the lifecycle of multiplayer gameplay:
 1. **Player Service**: Registration, profile management, and authentication validation.
@@ -41,12 +41,12 @@ flowchart TD
 
 To ensure high performance, clear transaction semantics, and straightforward debugging, GamePulse begins as a well-partitioned **modular monolith**. Module boundaries are strictly enforced:
 
-- `com.ea.gamepulse.player`: Player profiles, MMR rating, platform identifiers.
-- `com.ea.gamepulse.matchmaking`: Matchmaking queues, tickets, pool management, ticket status queries.
-- `com.ea.gamepulse.session`: Lobbies, match sessions, roster management, state transitions.
-- `com.ea.gamepulse.reliability`: Fault injection harness, circuit breaker policies, fallback mechanisms.
-- `com.ea.gamepulse.telemetry`: Custom metrics collectors, health probes, trace propagators.
-- `com.ea.gamepulse.core`: Common infrastructure (filters, exception handling, DTOs, correlation IDs).
+- `com.gamepulse.player`: Player profiles, MMR rating, platform identifiers.
+- `com.gamepulse.matchmaking`: Matchmaking queues, tickets, pool management, ticket status queries.
+- `com.gamepulse.session`: Lobbies, match sessions, roster management, state transitions.
+- `com.gamepulse.reliability`: Fault injection harness, circuit breaker policies, fallback mechanisms.
+- `com.gamepulse.telemetry`: Custom metrics collectors, health probes, trace propagators.
+- `com.gamepulse.core`: Common infrastructure (filters, exception handling, DTOs, correlation IDs).
 
 ---
 
