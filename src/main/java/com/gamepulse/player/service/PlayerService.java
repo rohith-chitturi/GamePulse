@@ -76,4 +76,10 @@ public class PlayerService {
         return playerRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Player", id));
     }
+
+    @Transactional
+    public Player getPlayerEntityWithLock(UUID id) {
+        return playerRepository.findByIdWithLock(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Player", id));
+    }
 }

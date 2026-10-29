@@ -24,8 +24,10 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 public class MatchmakingService {
@@ -55,14 +57,15 @@ public class MatchmakingService {
 
     @Transactional
     public MatchmakingTicketResponse enqueuePlayer(EnqueueRequest request) {
-        Player player = playerService.getPlayerEntity(request.getPlayerId());
+        // Concurrency control: acquire PESSIMISTIC_WRITE lock on player row to prevent duplicate queue races
+        Player player = playerService.getPlayerEntityWithLock(request.getPlayerId());
 
         if (ticketRepository.existsByPlayerIdAndStatus(player.getId(), TicketStatus.QUEUED)) {
             throw new DuplicateResourceException("MatchmakingTicket", "playerId", player.getId());
         }
 
-        if (player.getStatus() == PlayerStatus.IN_MATCH) {
-            throw new IllegalStateException(String.format("Player %s is currently in an active match", player.getId()));
+        if (player.getStatus() == PlayerStatus.IN_MATCH || player.getStatus() == PlayerStatus.IN_QUEUE) {
+            throw new IllegalStateException(String.format("Player %s is currently not eligible to enqueue (status=%s)", player.getId(), player.getStatus()));
         }
 
         MatchmakingTicket ticket = new MatchmakingTicket(player.getId(), player.getMmr());
@@ -80,8 +83,12 @@ public class MatchmakingService {
 
     @Transactional
     public MatchmakingTicketResponse cancelTicket(UUID ticketId) {
-        MatchmakingTicket ticket = ticketRepository.findById(ticketId)
-                .orElseThrow(() -> new ResourceNotFoundException("MatchmakingTicket", ticketId));
+        // Concurrency control: acquire PESSIMISTIC_WRITE lock on ticket
+        List<MatchmakingTicket> locked = ticketRepository.findByIdsWithLock(List.of(ticketId));
+        if (locked.isEmpty()) {
+            throw new ResourceNotFoundException("MatchmakingTicket", ticketId);
+        }
+        MatchmakingTicket ticket = locked.get(0);
 
         if (ticket.getStatus() != TicketStatus.QUEUED) {
             throw new InvalidStateTransitionException("MatchmakingTicket", ticket.getStatus().name(), TicketStatus.CANCELLED.name());
@@ -129,30 +136,47 @@ public class MatchmakingService {
                 int allowedTolerance = Math.max(toleranceA, toleranceB);
 
                 if (mmrDifference <= allowedTolerance) {
-                    // Match confirmed!
+                    // Concurrency control: acquire row-level lock on both candidate tickets to ensure they are still QUEUED
+                    List<MatchmakingTicket> lockedTickets = ticketRepository.findByIdsWithLock(List.of(ticketA.getId(), ticketB.getId()));
+                    if (lockedTickets.size() < 2) {
+                        continue;
+                    }
+
+                    Map<UUID, MatchmakingTicket> ticketMap = lockedTickets.stream()
+                            .collect(Collectors.toMap(MatchmakingTicket::getId, t -> t));
+                    MatchmakingTicket freshA = ticketMap.get(ticketA.getId());
+                    MatchmakingTicket freshB = ticketMap.get(ticketB.getId());
+
+                    if (freshA == null || freshB == null
+                            || freshA.getStatus() != TicketStatus.QUEUED
+                            || freshB.getStatus() != TicketStatus.QUEUED) {
+                        // One of the tickets was already matched or cancelled by a concurrent worker
+                        continue;
+                    }
+
                     matchedTicketIds.add(ticketA.getId());
                     matchedTicketIds.add(ticketB.getId());
 
                     MatchSessionResponse match = matchSessionService.createMatchedSession(
                             "Match: 1v1 Ranked Duel",
                             "DUEL_1V1",
-                            List.of(ticketA.getPlayerId(), ticketB.getPlayerId())
+                            List.of(freshA.getPlayerId(), freshB.getPlayerId())
                     );
 
-                    ticketA.setStatus(TicketStatus.MATCHED);
-                    ticketA.setMatchedAt(now);
-                    ticketA.setMatchSessionId(match.getId());
+                    freshA.setStatus(TicketStatus.MATCHED);
+                    freshA.setMatchedAt(now);
+                    freshA.setMatchSessionId(match.getId());
 
-                    ticketB.setStatus(TicketStatus.MATCHED);
-                    ticketB.setMatchedAt(now);
-                    ticketB.setMatchSessionId(match.getId());
+                    freshB.setStatus(TicketStatus.MATCHED);
+                    freshB.setMatchedAt(now);
+                    freshB.setMatchSessionId(match.getId());
 
-                    ticketRepository.save(ticketA);
-                    ticketRepository.save(ticketB);
+                    ticketRepository.save(freshA);
+                    ticketRepository.save(freshB);
 
                     formedMatches.add(match);
-                    log.info("Deterministic match formed: matchId={}, playerA={}, playerB={}, mmrDiff={}",
-                            match.getId(), ticketA.getPlayerId(), ticketB.getPlayerId(), mmrDifference);
+                    log.info("Deterministic match formed with concurrency protection: matchId={}, playerA={}, playerB={}, mmrDiff={}",
+                            match.getId(), freshA.getPlayerId(), freshB.getPlayerId(), mmrDifference);
                     break;
                 }
             }

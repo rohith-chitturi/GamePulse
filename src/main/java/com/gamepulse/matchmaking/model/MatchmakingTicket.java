@@ -10,6 +10,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -49,6 +50,9 @@ public class MatchmakingTicket {
 
     @Column(name = "cancelled_at")
     private Instant cancelledAt;
+
+    @Version
+    private Long version;
 
     public MatchmakingTicket() {
     }
@@ -127,5 +131,13 @@ public class MatchmakingTicket {
 
     public void setCancelledAt(Instant cancelledAt) {
         this.cancelledAt = cancelledAt;
+    }
+
+    public Long getVersion() {
+        return version;
+    }
+
+    public void setVersion(Long version) {
+        this.version = version;
     }
 }

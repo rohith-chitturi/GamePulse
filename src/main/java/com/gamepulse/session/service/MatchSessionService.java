@@ -59,7 +59,8 @@ public class MatchSessionService {
 
     @Transactional
     public MatchSessionResponse joinLobby(UUID sessionId, JoinLobbyRequest request) {
-        MatchSession session = getSessionEntity(sessionId);
+        // Concurrency control: acquire PESSIMISTIC_WRITE row lock to prevent over-capacity race conditions
+        MatchSession session = getSessionEntityWithLock(sessionId);
 
         if (session.getStatus() != MatchStatus.WAITING_FOR_PLAYERS && session.getStatus() != MatchStatus.INITIALIZING) {
             throw new InvalidStateTransitionException("MatchSession", session.getStatus().name(), "JOINING");
@@ -73,7 +74,7 @@ public class MatchSessionService {
             throw new DuplicateResourceException("LobbyPlayer", "playerId", request.getPlayerId());
         }
 
-        Player player = playerService.getPlayerEntity(request.getPlayerId());
+        Player player = playerService.getPlayerEntityWithLock(request.getPlayerId());
         int assignedTeam = (request.getTeam() != null && request.getTeam() > 0)
                 ? request.getTeam()
                 : (session.getPlayers().size() % 2) + 1;
@@ -106,7 +107,8 @@ public class MatchSessionService {
 
     @Transactional
     public MatchSessionResponse startMatch(UUID sessionId) {
-        MatchSession session = getSessionEntity(sessionId);
+        // Concurrency control: acquire PESSIMISTIC_WRITE row lock to prevent invalid transition races
+        MatchSession session = getSessionEntityWithLock(sessionId);
 
         if (!session.getStatus().canTransitionTo(MatchStatus.IN_PROGRESS)) {
             throw new InvalidStateTransitionException("MatchSession", session.getStatus().name(), MatchStatus.IN_PROGRESS.name());
@@ -130,7 +132,8 @@ public class MatchSessionService {
 
     @Transactional
     public MatchSessionResponse completeMatch(UUID sessionId, CompleteMatchRequest request) {
-        MatchSession session = getSessionEntity(sessionId);
+        // Concurrency control: acquire PESSIMISTIC_WRITE row lock to serialize completion
+        MatchSession session = getSessionEntityWithLock(sessionId);
 
         if (!session.getStatus().canTransitionTo(MatchStatus.COMPLETED)) {
             throw new InvalidStateTransitionException("MatchSession", session.getStatus().name(), MatchStatus.COMPLETED.name());
@@ -153,7 +156,8 @@ public class MatchSessionService {
 
     @Transactional
     public MatchSessionResponse cancelMatch(UUID sessionId, CancelMatchRequest request) {
-        MatchSession session = getSessionEntity(sessionId);
+        // Concurrency control: acquire PESSIMISTIC_WRITE row lock to serialize cancellation
+        MatchSession session = getSessionEntityWithLock(sessionId);
 
         if (!session.getStatus().canTransitionTo(MatchStatus.CANCELLED)) {
             throw new InvalidStateTransitionException("MatchSession", session.getStatus().name(), MatchStatus.CANCELLED.name());
@@ -188,6 +192,12 @@ public class MatchSessionService {
     @Transactional(readOnly = true)
     public MatchSession getSessionEntity(UUID id) {
         return matchSessionRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("MatchSession", id));
+    }
+
+    @Transactional
+    public MatchSession getSessionEntityWithLock(UUID id) {
+        return matchSessionRepository.findByIdWithLock(id)
                 .orElseThrow(() -> new ResourceNotFoundException("MatchSession", id));
     }
 }
