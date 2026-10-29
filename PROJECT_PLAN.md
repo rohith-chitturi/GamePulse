@@ -12,8 +12,8 @@
 
 | Phase | Title | Branch | PR # | PR Status | Review Status | CI Quality Gate |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Phase 0** | Repository & Project Foundation | `feat/phase0-project-foundation` | Pending | In Progress | Pending | Passing |
-| **Phase 1** | Gameplay Backend Services | `feat/phase1-gameplay-backend` | - | Planned | - | - |
+| **Phase 0** | Repository & Project Foundation | `feat/phase0-project-foundation` | [#1](https://github.com/rohith-chitturi/GamePulse/pull/1) | MERGED | Approved | Passing |
+| **Phase 1** | Gameplay Backend Services | `feat/phase1-gameplay-backend` | Pending | In Progress | Pending | Passing |
 | **Phase 2** | Data Integrity & Concurrency | `feat/phase2-data-integrity-concurrency` | - | Planned | - | - |
 | **Phase 3** | Redis & Service Resilience | `feat/phase3-redis-resilience` | - | Planned | - | - |
 | **Phase 4** | Observability & Telemetry | `feat/phase4-observability-telemetry` | - | Planned | - | - |
@@ -38,7 +38,7 @@
   - Project architecture & planning documentation.
 - **Acceptance Criteria**:
   - Clean `mvn test` execution with 100% test pass rate.
-  - PR opened on GitHub targeting `main` branch with verified CI status.
+  - PR #1 opened on GitHub targeting `main` branch with verified CI status. (Completed & Merged)
 
 ### Phase 1 — Gameplay Backend Services
 - **Goals**:
@@ -46,9 +46,10 @@
   - Matchmaking Service: deterministic FIFO queue with MMR windowing, ticket lifecycle (`QUEUED`, `MATCHED`, `CANCELLED`, `EXPIRED`).
   - Lobby and Match Session Service: lobby creation, joining, capacity validation, state machine (`INITIALIZING`, `WAITING_FOR_PLAYERS`, `IN_PROGRESS`, `COMPLETED`, `CANCELLED`).
   - Authoritative persistence in PostgreSQL / H2 test profile.
-  - OpenAPI/Swagger documentation.
+  - OpenAPI/Swagger documentation (`/v3/api-docs`, `/swagger-ui.html`).
 - **Acceptance Criteria**:
   - Complete gameplay lifecycle tested end-to-end via REST APIs.
+  - Comprehensive unit and integration test coverage across all domain services.
 
 ### Phase 2 — Data Integrity and Concurrency
 - **Goals**:
@@ -79,7 +80,7 @@
 
 ### Phase 5 — Load Testing and Reliability Experiments
 - **Goals**:
-  - k6 load test scripts (normal, burst, slow dependency, recovery scenarios).
+  - k6 load test scenarios (normal, burst, slow dependency, recovery scenarios).
   - Repeatable empirical experiments with hypothesis, baseline, injection, fix, and post-fix metrics.
   - Documented before/after latency (p50/p95/p99) and error rates.
 - **Acceptance Criteria**:
