@@ -2,7 +2,11 @@ package com.gamepulse.matchmaking.repository;
 
 import com.gamepulse.matchmaking.model.MatchmakingTicket;
 import com.gamepulse.matchmaking.model.TicketStatus;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -19,4 +23,8 @@ public interface MatchmakingTicketRepository extends JpaRepository<MatchmakingTi
     List<MatchmakingTicket> findByStatusOrderByEnqueuedAtAsc(TicketStatus status);
 
     long countByStatus(TicketStatus status);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT t FROM MatchmakingTicket t WHERE t.id IN :ids")
+    List<MatchmakingTicket> findByIdsWithLock(@Param("ids") List<UUID> ids);
 }

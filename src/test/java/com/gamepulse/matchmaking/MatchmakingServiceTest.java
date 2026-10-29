@@ -23,7 +23,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -67,7 +66,7 @@ class MatchmakingServiceTest {
         player.setId(playerId);
         player.setStatus(PlayerStatus.ONLINE);
 
-        when(playerService.getPlayerEntity(playerId)).thenReturn(player);
+        when(playerService.getPlayerEntityWithLock(playerId)).thenReturn(player);
         when(ticketRepository.existsByPlayerIdAndStatus(playerId, TicketStatus.QUEUED)).thenReturn(false);
 
         MatchmakingTicket ticket = new MatchmakingTicket(playerId, 1250);
@@ -91,7 +90,7 @@ class MatchmakingServiceTest {
         Player player = new Player("PilotAlpha", "pilot@ea.com", 1250);
         player.setId(playerId);
 
-        when(playerService.getPlayerEntity(playerId)).thenReturn(player);
+        when(playerService.getPlayerEntityWithLock(playerId)).thenReturn(player);
         when(ticketRepository.existsByPlayerIdAndStatus(playerId, TicketStatus.QUEUED)).thenReturn(true);
 
         assertThatThrownBy(() -> matchmakingService.enqueuePlayer(new EnqueueRequest(playerId)))
@@ -108,7 +107,7 @@ class MatchmakingServiceTest {
         ticket.setId(ticketId);
         ticket.setStatus(TicketStatus.QUEUED);
 
-        when(ticketRepository.findById(ticketId)).thenReturn(Optional.of(ticket));
+        when(ticketRepository.findByIdsWithLock(List.of(ticketId))).thenReturn(List.of(ticket));
         when(ticketRepository.save(any(MatchmakingTicket.class))).thenReturn(ticket);
 
         MatchmakingTicketResponse response = matchmakingService.cancelTicket(ticketId);
@@ -126,7 +125,7 @@ class MatchmakingServiceTest {
         ticket.setId(ticketId);
         ticket.setStatus(TicketStatus.MATCHED);
 
-        when(ticketRepository.findById(ticketId)).thenReturn(Optional.of(ticket));
+        when(ticketRepository.findByIdsWithLock(List.of(ticketId))).thenReturn(List.of(ticket));
 
         assertThatThrownBy(() -> matchmakingService.cancelTicket(ticketId))
                 .isInstanceOf(InvalidStateTransitionException.class);
@@ -147,6 +146,7 @@ class MatchmakingServiceTest {
         ReflectionTestUtils.setField(t2, "enqueuedAt", Instant.now());
 
         when(ticketRepository.findByStatusOrderByEnqueuedAtAsc(TicketStatus.QUEUED)).thenReturn(List.of(t1, t2));
+        when(ticketRepository.findByIdsWithLock(List.of(t1.getId(), t2.getId()))).thenReturn(List.of(t1, t2));
 
         MatchSessionResponse mockSession = new MatchSessionResponse(
                 UUID.randomUUID(), "Ranked", "DUEL_1V1", 2, 2,
