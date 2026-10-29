@@ -14,7 +14,7 @@
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Phase 0** | Repository & Project Foundation | `feat/phase0-project-foundation` | [#1](https://github.com/rohith-chitturi/GamePulse/pull/1) | MERGED | Approved | Passing |
 | **Phase 1** | Gameplay Backend Services | `feat/phase1-gameplay-backend` | [#2](https://github.com/rohith-chitturi/GamePulse/pull/2) | MERGED | Approved | Passing |
-| **Phase 2** | Data Integrity & Concurrency | `feat/phase2-data-integrity-concurrency` | Pending PR | In Progress | In Review | Passing |
+| **Phase 2** | Data Integrity & Concurrency | `feat/phase2-data-integrity-concurrency` | [#4](https://github.com/rohith-chitturi/GamePulse/pull/4) | OPEN | In Review (CI Verified) | Passing |
 | **Phase 3** | Redis & Service Resilience | `feat/phase3-redis-resilience` | - | Planned | - | - |
 | **Phase 4** | Observability & Telemetry | `feat/phase4-observability-telemetry` | - | Planned | - | - |
 | **Phase 5** | Load Testing & Reliability Experiments | `feat/phase5-load-testing-experiments` | - | Planned | - | - |
