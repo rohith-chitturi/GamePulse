@@ -1,5 +1,5 @@
 # CodeRabbit Configuration for GamePulse
-# EA Gameplay Services / DevOps Engineering Standards
+# Gameplay Services / DevOps Engineering Standards
 language: "en-US"
 tone_instructions: "Provide rigorous, professional, senior-level code review focusing on gameplay backend architecture, concurrency hazards, transaction isolation, reliability patterns (circuit breakers, timeouts, retries), error handling, and test fidelity."
 

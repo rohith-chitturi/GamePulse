@@ -5,9 +5,9 @@
 [![Java 17 LTS](https://img.shields.io/badge/Java-17%20LTS-orange.svg)](https://www.oracle.com/java/)
 [![Spring Boot 3.3.5](https://img.shields.io/badge/Spring%20Boot-3.3.5-brightgreen.svg)](https://spring.io/projects/spring-boot)
 
-**GamePulse** is a production-grade, distributed gameplay services platform developed as an engineering showcase for the **Electronic Arts Software Engineering / DevOps Internship**.
+**GamePulse** is a production-grade, distributed gameplay services platform simulating chaos-resilient backend infrastructure for real-time multiplayer titles.
 
-The platform simulates the core backend infrastructure supporting real-time multiplayer titles (e.g., EA SPORTS FC, Apex Legends, Battlefield) — including player profiles, deterministic matchmaking queues, lobby management, match lifecycle sessions, and reliability engineering controls.
+The platform simulates the core backend infrastructure supporting real-time multiplayer titles (e.g., competitive multiplayer battle arenas, shooters, and sports simulations) — including player profiles, deterministic matchmaking queues, lobby management, match lifecycle sessions, and reliability engineering controls.
 
 ---
 
@@ -29,7 +29,7 @@ GamePulse addresses this question through an **experimentally verified reliabili
 GamePulse is implemented as a clean **modular monolith** with explicit domain boundaries:
 
 ```
-src/main/java/com/ea/gamepulse/
+src/main/java/com/gamepulse/
 ├── core/            # Infrastructure: CorrelationId filter, global exception handling, response wrappers
 ├── player/          # Player profiles, ratings, registration, validations
 ├── matchmaking/     # FIFO matchmaking queue, windowed MMR matching, ticket lifecycle
