@@ -68,7 +68,7 @@ class MatchSessionServiceTest {
     }
 
     @Test
-    @DisplayName("Join Lobby: Successfully adds eligible player")
+    @DisplayName("Join Lobby: Successfully adds eligible player under pessimistic write lock")
     void testJoinLobbySuccess() {
         UUID sessionId = UUID.randomUUID();
         UUID playerId = UUID.randomUUID();
@@ -79,9 +79,9 @@ class MatchSessionServiceTest {
         Player player = new Player("PlayerOne", "p1@ea.com", 1200);
         player.setId(playerId);
 
-        when(matchSessionRepository.findById(sessionId)).thenReturn(Optional.of(session));
+        when(matchSessionRepository.findByIdWithLock(sessionId)).thenReturn(Optional.of(session));
         when(matchSessionPlayerRepository.existsByMatchSessionIdAndPlayerId(sessionId, playerId)).thenReturn(false);
-        when(playerService.getPlayerEntity(playerId)).thenReturn(player);
+        when(playerService.getPlayerEntityWithLock(playerId)).thenReturn(player);
         when(matchSessionRepository.save(any(MatchSession.class))).thenReturn(session);
 
         MatchSessionResponse response = matchSessionService.joinLobby(sessionId, new JoinLobbyRequest(playerId, 1));
@@ -101,7 +101,7 @@ class MatchSessionServiceTest {
         session.addPlayer(UUID.randomUUID(), 1);
         session.addPlayer(UUID.randomUUID(), 2);
 
-        when(matchSessionRepository.findById(sessionId)).thenReturn(Optional.of(session));
+        when(matchSessionRepository.findByIdWithLock(sessionId)).thenReturn(Optional.of(session));
 
         assertThatThrownBy(() -> matchSessionService.joinLobby(sessionId, new JoinLobbyRequest(playerId, 1)))
                 .isInstanceOf(CapacityExceededException.class);
@@ -116,7 +116,7 @@ class MatchSessionServiceTest {
         MatchSession session = new MatchSession("Custom Match", "DUEL_1V1", 2);
         session.setId(sessionId);
 
-        when(matchSessionRepository.findById(sessionId)).thenReturn(Optional.of(session));
+        when(matchSessionRepository.findByIdWithLock(sessionId)).thenReturn(Optional.of(session));
         when(matchSessionPlayerRepository.existsByMatchSessionIdAndPlayerId(sessionId, playerId)).thenReturn(true);
 
         assertThatThrownBy(() -> matchSessionService.joinLobby(sessionId, new JoinLobbyRequest(playerId, 1)))
@@ -132,7 +132,7 @@ class MatchSessionServiceTest {
         session.addPlayer(UUID.randomUUID(), 1);
         session.addPlayer(UUID.randomUUID(), 2);
 
-        when(matchSessionRepository.findById(sessionId)).thenReturn(Optional.of(session));
+        when(matchSessionRepository.findByIdWithLock(sessionId)).thenReturn(Optional.of(session));
         when(matchSessionRepository.save(any(MatchSession.class))).thenReturn(session);
 
         MatchSessionResponse response = matchSessionService.startMatch(sessionId);
@@ -154,7 +154,7 @@ class MatchSessionServiceTest {
         session.addPlayer(p1Id, 1);
         session.addPlayer(p2Id, 2);
 
-        when(matchSessionRepository.findById(sessionId)).thenReturn(Optional.of(session));
+        when(matchSessionRepository.findByIdWithLock(sessionId)).thenReturn(Optional.of(session));
         when(matchSessionRepository.save(any(MatchSession.class))).thenReturn(session);
 
         MatchSessionResponse response = matchSessionService.completeMatch(sessionId, new CompleteMatchRequest(p1Id, "Victory"));
@@ -173,7 +173,7 @@ class MatchSessionServiceTest {
         session.setId(sessionId);
         session.setStatus(MatchStatus.COMPLETED);
 
-        when(matchSessionRepository.findById(sessionId)).thenReturn(Optional.of(session));
+        when(matchSessionRepository.findByIdWithLock(sessionId)).thenReturn(Optional.of(session));
 
         assertThatThrownBy(() -> matchSessionService.cancelMatch(sessionId, new CancelMatchRequest("Test")))
                 .isInstanceOf(InvalidStateTransitionException.class);
