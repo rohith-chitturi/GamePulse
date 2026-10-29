@@ -12,7 +12,7 @@
 
 | Phase | Title | Branch | PR # | PR Status | Review Status | CI Quality Gate |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Phase 0** | Repository & Project Foundation | `feat/phase0-project-foundation` | Pending | In Progress | Pending | Passing |
+| **Phase 0** | Repository & Project Foundation | `feat/phase0-project-foundation` | [#1](https://github.com/rohith-chitturi/GamePulse/pull/1) | OPEN | Passed (Self-Review / CI Verified) | Passing |
 | **Phase 1** | Gameplay Backend Services | `feat/phase1-gameplay-backend` | - | Planned | - | - |
 | **Phase 2** | Data Integrity & Concurrency | `feat/phase2-data-integrity-concurrency` | - | Planned | - | - |
 | **Phase 3** | Redis & Service Resilience | `feat/phase3-redis-resilience` | - | Planned | - | - |
