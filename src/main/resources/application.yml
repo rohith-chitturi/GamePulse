@@ -9,6 +9,23 @@ spring:
     driver-class-name: ${SPRING_DATASOURCE_DRIVER:org.h2.Driver}
     username: ${SPRING_DATASOURCE_USERNAME:sa}
     password: ${SPRING_DATASOURCE_PASSWORD:}
+    hikari:
+      pool-name: GamePulseHikariPool
+      connection-timeout: 3000
+      validation-timeout: 2000
+      maximum-pool-size: 10
+      minimum-idle: 5
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      leak-detection-threshold: 5000
+  data:
+    redis:
+      repositories:
+        enabled: false
+      host: ${SPRING_DATA_REDIS_HOST:${SPRING_REDIS_HOST:${REDIS_HOST:localhost}}}
+      port: ${SPRING_DATA_REDIS_PORT:${SPRING_REDIS_PORT:${REDIS_PORT:6379}}}
+      timeout: 2000ms
+      connect-timeout: 2000ms
   jpa:
     hibernate:
       ddl-auto: update
@@ -22,18 +39,83 @@ gamepulse:
     base-tolerance: 100
     expansion-rate-per-sec: 5
     max-tolerance: 1000
+  resilience:
+    redis:
+      enabled: ${REDIS_ENABLED:true}
+      ttl-seconds: 300
+    downstream:
+      timeout-ms: 2000
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      redisService:
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 5
+        minimumNumberOfCalls: 3
+        failureRateThreshold: 50
+        waitDurationInOpenState: 5000ms
+        permittedNumberOfCallsInHalfOpenState: 2
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        recordExceptions:
+          - org.springframework.data.redis.RedisConnectionFailureException
+          - org.springframework.data.redis.RedisSystemException
+          - io.lettuce.core.RedisException
+          - java.net.ConnectException
+          - java.util.concurrent.TimeoutException
+      downstreamService:
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 5
+        minimumNumberOfCalls: 3
+        failureRateThreshold: 50
+        waitDurationInOpenState: 5000ms
+        permittedNumberOfCallsInHalfOpenState: 2
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        recordExceptions:
+          - java.io.IOException
+          - java.net.SocketTimeoutException
+          - java.util.concurrent.TimeoutException
+          - org.springframework.web.client.RestClientException
+          - java.lang.RuntimeException
+  retry:
+    instances:
+      databaseRetry:
+        maxAttempts: 3
+        waitDuration: 100ms
+        enableExponentialBackoff: true
+        exponentialBackoffMultiplier: 2
+        retryExceptions:
+          - org.springframework.dao.CannotAcquireLockException
+          - org.springframework.dao.PessimisticLockingFailureException
+          - org.springframework.dao.OptimisticLockingFailureException
+          - org.springframework.dao.TransientDataAccessException
+      downstreamService:
+        maxAttempts: 3
+        waitDuration: 100ms
+        enableExponentialBackoff: true
+        exponentialBackoffMultiplier: 2
+        retryExceptions:
+          - java.io.IOException
+          - java.net.SocketTimeoutException
+          - java.util.concurrent.TimeoutException
+          - java.lang.RuntimeException
 
 management:
   endpoints:
     web:
       exposure:
-        include: "health,info,prometheus,metrics"
+        include: "health,info,prometheus,metrics,circuitbreakers,circuitbreakerevents,retries,retryevents"
   endpoint:
     health:
       show-details: always
       probes:
         enabled: true
     prometheus:
+      enabled: true
+  health:
+    redis:
+      enabled: false
+    circuitbreakers:
       enabled: true
   prometheus:
     metrics:
@@ -49,3 +131,4 @@ logging:
   level:
     root: INFO
     com.gamepulse: DEBUG
+    io.github.resilience4j: INFO

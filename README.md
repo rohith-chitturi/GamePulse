@@ -110,8 +110,8 @@ flowchart TD
 | **Docker & Docker Compose** | Multi-stage production container and 5-service local stack | Implemented & Verified |
 | **JUnit 5 & Mockito** | Automated testing, unit mocks, and concurrency assertion suites | Implemented & Verified |
 | **GitHub Actions** | Automated CI quality gate running builds, tests, and container builds on Ubuntu | Implemented & Verified |
-| *Redis 7* | Distributed cache and queue state coordination (containerized in compose) | Infrastructure Configured (Phase 3 integration) |
-| *Resilience4j* | Circuit breakers, rate limiters, and retry policies | Planned (Phase 3) |
+| **Redis 7** | Distributed cache and cache-aside profile acceleration with graceful degradation | Implemented & Verified |
+| **Resilience4j 2.2** | Circuit breakers, rate limiters, bounded retry policies, and fallback event handlers | Implemented & Verified |
 | *k6* | Distributed load testing and controlled reliability experiments | Planned (Phase 5) |
 
 ---
@@ -239,6 +239,8 @@ export SPRING_DATASOURCE_DRIVER=org.postgresql.Driver
 | **Matches** | `POST` | `/api/v1/matches/{sessionId}/complete`| Complete match and record winner |
 | **Matches** | `POST` | `/api/v1/matches/{sessionId}/cancel` | Cancel match with reason |
 | **Matches** | `GET` | `/api/v1/matches/{sessionId}` | Retrieve full match session details and roster |
+| **Resilience** | `GET` | `/api/v1/resilience/status` | Query circuit breaker states, Redis cache status, and retry metrics |
+| **Resilience** | `POST`| `/api/v1/resilience/chaos/downstream` | Toggle simulated downstream latency and timeout faults |
 | **Health** | `GET` | `/actuator/health` | Application health and liveness/readiness indicators |
 | **Metrics** | `GET` | `/actuator/prometheus` | Prometheus metric exposition scrape target |
 
@@ -341,14 +343,57 @@ Thread 2 (Join) ──> BLOCKED waiting for lock ──────────�
 
 ---
 
-## 9. Automated Testing & Verification
+## 9. Resilience Engineering & Failure Testing
+
+GamePulse incorporates defensive reliability patterns designed to guarantee zero service crashes, prevent cascading failures, and ensure graceful degradation when core dependencies (PostgreSQL, Redis, or downstream notification webhooks) experience outages or latency spikes.
+
+### Multi-Tier Resilience Architecture
+
+1. **Database Connection Pool Resilience (HikariCP)**:
+   - Configured bounded connection acquisition (`connection-timeout: 3000ms`, `validation-timeout: 2000ms`, `leak-detection-threshold: 5000ms`).
+   - Connection pool exhaustion and database unreachable exceptions (`CannotCreateTransactionException`, `DataAccessResourceFailureException`, `SQLTransientConnectionException`) are intercepted and translated to standard RFC 7807 `503 Service Unavailable` with `DATABASE_UNAVAILABLE`.
+   - The servlet `IdempotencyFilter` safely intercepts database outages prior to controller execution, returning HTTP 503 without corrupting partial idempotency reservations.
+
+2. **Redis Cache-Aside with Circuit Breaker (`redisService`)**:
+   - Player profile lookups and updates are accelerated via Redis 7 with a 5-minute TTL.
+   - Protected by a Resilience4j Circuit Breaker (`redisService`) configured with a count-based sliding window of 5 calls, 50% failure rate threshold, 5000ms open wait duration, and automatic half-open probing.
+   - When Redis goes down, `RedisResilienceService` executes non-blocking fallbacks (`getFallback`, `setFallback`, `deleteFallback`), seamlessly falling back to authoritative PostgreSQL queries with zero client interruption.
+   - Actuator health check disables hard Redis coupling (`management.health.redis.enabled: false`), preventing non-critical cache outages from failing kubernetes liveness/readiness probes.
+
+3. **Downstream Event Notification Resilience (`downstreamService`)**:
+   - Match completion events dispatch telemetry to external services protected by a Resilience4j Circuit Breaker and Bounded Retry policy (3 attempts with exponential backoff).
+   - If the downstream service times out or fails repeatedly, `notifyMatchCompletedFallback` logs the occurrence and defers the notification without aborting the player's match completion transaction.
+
+4. **Resilience Status & Fault Injection Endpoints**:
+   - Real-time circuit breaker states, retry metrics, and Redis cache health are queryable at `GET /api/v1/resilience/status`.
+   - Chaos fault injection hook (`POST /api/v1/resilience/chaos/downstream?active=true`) allows simulating downstream timeout spikes on demand.
+
+### Controlled Failure Verification Matrix
+
+A comprehensive automated failure testing script ([scripts/verify-resilience.ps1](scripts/verify-resilience.ps1)) verifies 7 controlled fault injection experiments against the live Docker Compose cluster:
+
+| Experiment # | Simulated Failure Condition | Injected Fault | Expected System Behavior | Verified Result |
+| :--- | :--- | :--- | :--- | :--- |
+| **EXP-01** | PostgreSQL Database Outage | `docker compose stop postgres` | Requests return RFC 7807 HTTP 503 `DATABASE_UNAVAILABLE` | **PASS (503 Service Unavailable)** |
+| **EXP-02** | Sustained Database Outage | Repeated rapid calls during outage | Fails fast, rejects connections cleanly, zero thread/connection leak | **PASS (503, 503, 503 clean reject)** |
+| **EXP-03** | Idempotency during DB Outage | `POST /players` with Idempotency-Key | Filter intercepts failure cleanly; zero corrupted state persisted | **PASS (503 without partial state)** |
+| **EXP-04** | PostgreSQL Recovery & Idempotency | `docker compose start postgres` | Retried request succeeds (201 Created); duplicate replay returns 201 | **PASS (201 Created & Replayed)** |
+| **EXP-05** | Redis Cache Outage | `docker compose stop redis` | Circuit breaker trips; profile requests degrade seamlessly to DB (200 OK) | **PASS (Graceful degradation to DB)** |
+| **EXP-06** | Downstream Timeout Chaos | Chaos hook active (`chaosFaultActive=true`) | 3 retries exhaust, circuit breaker opens, fallback activates, match completes (200 OK) | **PASS (Match completed via fallback)** |
+| **EXP-07** | Post-Recovery Data Integrity | Post-experiment state verification | All player profiles and match rosters remain consistent and online | **PASS (Authoritative data intact)** |
+
+> Complete failure logs, latency charts, and reproduction steps are documented in [docs/RESILIENCE_TEST_REPORT.md](docs/RESILIENCE_TEST_REPORT.md).
+
+---
+
+## 10. Automated Testing & Verification
 
 ```
 -------------------------------------------------------
  T E S T S
 -------------------------------------------------------
 Results:
-Tests run: 38, Failures: 0, Errors: 0, Skipped: 2
+Tests run: 52, Failures: 0, Errors: 0, Skipped: 2
 BUILD SUCCESS
 ```
 
@@ -365,6 +410,12 @@ BUILD SUCCESS
    - Validates state machine rules, validation constraints, and exception triggers in isolation.
 5. **Containerized PostgreSQL Tests (`PostgreSqlConcurrencyIntegrationTest`)**:
    - Real PostgreSQL test suite using Testcontainers. Configured with `@Testcontainers(disabledWithoutDocker = true)`; automatically executes in Linux CI environments (`/var/run/docker.sock`).
+6. **Resilience & Circuit Breaker Unit Tests (`ResilienceUnitTest`)**:
+   - 7 unit tests verifying circuit breaker state transitions (`CLOSED` -> `OPEN` -> `HALF_OPEN` -> `CLOSED`), bounded retries with exponential backoff, and Redis fallback handlers.
+7. **Resilience Integration Tests (`ResilienceIntegrationTest`)**:
+   - 4 end-to-end integration tests verifying real-time resilience status reporting, chaos timeout injection, downstream fallback triggering, and Prometheus circuit breaker metrics.
+8. **Resilience Exception Handling Tests (`GlobalExceptionHandlerTest`)**:
+   - Validates RFC 7807 translations for database connection failures (503 `DATABASE_UNAVAILABLE`), circuit breaker open rejections (503 `CIRCUIT_BREAKER_OPEN`), and rate limit exceeded (429 `RATE_LIMIT_EXCEEDED`).
 
 ### Running the Tests
 ```bash
@@ -373,7 +424,7 @@ BUILD SUCCESS
 
 ---
 
-## 10. Observability & Troubleshooting
+## 11. Observability & Troubleshooting
 
 ### Operational Telemetry
 - **Correlation IDs**: Every HTTP request receives or inherits an `X-Correlation-Id`. Log messages output structured correlation context:
@@ -397,7 +448,7 @@ BUILD SUCCESS
 
 ---
 
-## 11. Engineering Decisions & Trade-offs
+## 12. Engineering Decisions & Trade-offs
 
 - **Deterministic FIFO Matchmaking over Complex Heuristics**: Deterministic FIFO matchmaking with dynamically expanding MMR windows was chosen over speculative ELO algorithms to keep match formation verifiable, reproducible, and transparent for testing.
 - **Pessimistic Row Locking for Lobby Capacity**: High contention occurs at the capacity boundary (e.g. 1 slot remaining in a competitive lobby). Optimistic locking would cause frequent transaction aborts and user retries. Pessimistic row locking (`SELECT ... FOR UPDATE`) serializes the join sequence safely.
@@ -406,7 +457,7 @@ BUILD SUCCESS
 
 ---
 
-## 12. Project Roadmap
+## 13. Project Roadmap
 
 - [x] **Phase 0 — Repository & Project Foundation**: Maven baseline, Java 17 LTS, CI Quality Gate, Correlation ID filter, OpenAPI documentation ([PR #1](https://github.com/rohith-chitturi/GamePulse/pull/1)).
 - [x] **Phase 1 — Gameplay Backend Services**: Player profiles, deterministic matchmaking, lobby/session lifecycle state machines, RFC 7807 error responses ([PR #2](https://github.com/rohith-chitturi/GamePulse/pull/2)).
@@ -416,11 +467,12 @@ BUILD SUCCESS
 - [ ] **Phase 4 — Observability & Telemetry**: Custom Micrometer gameplay metrics (queue depth, match formation latency), Grafana dashboard configuration.
 - [ ] **Phase 5 — Load Testing & Chaos Experiments**: Automated k6 load generation, controlled failure injection, and empirical before/after latency benchmarking.
 - [x] **Phase 6 — Docker & CI/CD Hardening**: Multi-stage production `Dockerfile`, `docker-compose.yml` (App, PostgreSQL, Redis, Prometheus, Grafana) ([PR #6](https://github.com/rohith-chitturi/GamePulse/pull/6)).
-- [ ] **Phase 7 — Operations Dashboard**: Lightweight operations dashboard visualizing live queues and circuit breaker states.
+- [x] **Phase 7 — Resilience Engineering & Failure Testing**: Multi-tier fault tolerance, Resilience4j circuit breakers, bounded retries with backoff, Redis 7 cache-aside degradation, RFC 7807 503 database failure handling, live chaos injection, and 7 automated failure experiments ([docs/RESILIENCE_TEST_REPORT.md](docs/RESILIENCE_TEST_REPORT.md)).
+- [ ] **Phase 8 — Operations Dashboard**: Lightweight operations dashboard visualizing live queues and circuit breaker states.
 
 ---
 
-## 13. Project Demonstration Walkthrough
+## 14. Project Demonstration Walkthrough
 
 To verify GamePulse locally in under two minutes:
 1. **Run the Automated Concurrency Suite**:
@@ -439,7 +491,7 @@ To verify GamePulse locally in under two minutes:
 
 ---
 
-## 14. Current Engineering Limitations
+## 15. Current Engineering Limitations
 
 - **Single-Instance Locking Scope**: Pessimistic row locking provides absolute correctness within a shared PostgreSQL database. Distributed multi-region deployments with partitioned databases will require distributed locks (e.g. Redlock via Redis) planned for upcoming phases.
 - **Windows Docker Testcontainers Compatibility**: Due to Windows named-pipe translation with Docker Desktop WSL2, containerized Testcontainers tests are skipped on local Windows hosts and run natively on Linux runners in GitHub Actions CI.
