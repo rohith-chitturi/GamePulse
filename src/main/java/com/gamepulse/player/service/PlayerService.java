@@ -2,6 +2,7 @@ package com.gamepulse.player.service;
 
 import com.gamepulse.core.exception.DuplicateResourceException;
 import com.gamepulse.core.exception.ResourceNotFoundException;
+import com.gamepulse.core.resilience.RedisResilienceService;
 import com.gamepulse.player.dto.CreatePlayerRequest;
 import com.gamepulse.player.dto.PlayerResponse;
 import com.gamepulse.player.model.Player;
@@ -9,11 +10,14 @@ import com.gamepulse.player.model.PlayerStatus;
 import com.gamepulse.player.repository.PlayerRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -21,9 +25,17 @@ public class PlayerService {
 
     private static final Logger log = LoggerFactory.getLogger(PlayerService.class);
     private final PlayerRepository playerRepository;
+    private final RedisResilienceService redisResilienceService;
 
     public PlayerService(PlayerRepository playerRepository) {
+        this(playerRepository, null);
+    }
+
+    @Autowired
+    public PlayerService(PlayerRepository playerRepository,
+                         @Autowired(required = false) RedisResilienceService redisResilienceService) {
         this.playerRepository = playerRepository;
+        this.redisResilienceService = redisResilienceService;
     }
 
     @Transactional
@@ -42,13 +54,33 @@ public class PlayerService {
         Player player = new Player(request.getUsername(), request.getEmail(), initialMmr);
         Player saved = playerRepository.save(player);
         log.info("Player profile created: id={}, username={}, mmr={}", saved.getId(), saved.getUsername(), saved.getMmr());
-        return PlayerResponse.fromEntity(saved);
+
+        PlayerResponse response = PlayerResponse.fromEntity(saved);
+        if (redisResilienceService != null) {
+            redisResilienceService.set("player:profile:" + saved.getId(), response, Duration.ofMinutes(5));
+        }
+        return response;
     }
 
     @Transactional(readOnly = true)
     public PlayerResponse getPlayerById(UUID id) {
+        // Cache-Aside: check Redis cache first if available
+        if (redisResilienceService != null) {
+            Optional<PlayerResponse> cached = redisResilienceService.get("player:profile:" + id, PlayerResponse.class);
+            if (cached.isPresent()) {
+                log.debug("Cache hit in Redis for player {}", id);
+                return cached.get();
+            }
+        }
+
+        // Authoritative database query fallback
         Player player = getPlayerEntity(id);
-        return PlayerResponse.fromEntity(player);
+        PlayerResponse response = PlayerResponse.fromEntity(player);
+
+        if (redisResilienceService != null) {
+            redisResilienceService.set("player:profile:" + id, response, Duration.ofMinutes(5));
+        }
+        return response;
     }
 
     @Transactional(readOnly = true)
@@ -69,6 +101,10 @@ public class PlayerService {
         log.debug("Updating player status: id={}, old={}, new={}", id, player.getStatus(), newStatus);
         player.setStatus(newStatus);
         playerRepository.save(player);
+
+        if (redisResilienceService != null) {
+            redisResilienceService.delete("player:profile:" + id);
+        }
     }
 
     @Transactional(readOnly = true)

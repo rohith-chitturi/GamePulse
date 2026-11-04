@@ -10,11 +10,16 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
+import org.springframework.dao.DataAccessException;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.CannotCreateTransactionException;
 import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.web.util.ContentCachingResponseWrapper;
@@ -29,11 +34,13 @@ import java.util.Set;
 /**
  * Filter that intercepts mutating requests carrying an 'Idempotency-Key' header,
  * preventing duplicate operations, safely handling concurrent submissions,
- * and replaying identical responses for legitimate retries.
+ * and replaying identical responses for legitimate retries with resilient failure handling.
  */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE + 10) // Immediately after CorrelationIdFilter
 public class IdempotencyFilter extends OncePerRequestFilter {
+
+    private static final Logger log = LoggerFactory.getLogger(IdempotencyFilter.class);
 
     public static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
     public static final String IDEMPOTENCY_REPLAYED_HEADER = "Idempotency-Replayed";
@@ -79,6 +86,10 @@ public class IdempotencyFilter extends OncePerRequestFilter {
         } catch (GamePulseException ex) {
             writeErrorResponse(response, ex, path);
             return;
+        } catch (CannotCreateTransactionException | DataAccessException ex) {
+            log.error("Database connection failure in IdempotencyFilter on URI [{}]: {}", path, ex.getMessage());
+            writeDatabaseErrorResponse(response, path);
+            return;
         }
 
         if (checkResult.isReplayed()) {
@@ -111,7 +122,11 @@ public class IdempotencyFilter extends OncePerRequestFilter {
             wrappedResponse.setHeader(IDEMPOTENCY_KEY_HEADER, idempotencyKey);
             wrappedResponse.copyBodyToResponse();
         } catch (Exception ex) {
-            idempotencyService.fail(idempotencyKey);
+            try {
+                idempotencyService.fail(idempotencyKey);
+            } catch (Exception failEx) {
+                log.warn("Failed to mark idempotency record failed (likely database outage): {}", failEx.getMessage());
+            }
             throw ex;
         }
     }
@@ -129,6 +144,23 @@ public class IdempotencyFilter extends OncePerRequestFilter {
         );
 
         response.setStatus(ex.getStatus().value());
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        response.getOutputStream().write(objectMapper.writeValueAsBytes(errorResponse));
+    }
+
+    private void writeDatabaseErrorResponse(HttpServletResponse response, String path) throws IOException {
+        String correlationId = MDC.get(CorrelationIdFilter.MDC_KEY);
+        ApiErrorResponse errorResponse = new ApiErrorResponse(
+                HttpStatus.SERVICE_UNAVAILABLE.value(),
+                HttpStatus.SERVICE_UNAVAILABLE.getReasonPhrase(),
+                "DATABASE_UNAVAILABLE",
+                "Authoritative database is currently unreachable or connection pool exhausted. Please retry shortly.",
+                path,
+                correlationId != null ? correlationId : "unknown",
+                null
+        );
+
+        response.setStatus(HttpStatus.SERVICE_UNAVAILABLE.value());
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.getOutputStream().write(objectMapper.writeValueAsBytes(errorResponse));
     }

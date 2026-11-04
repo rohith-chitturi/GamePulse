@@ -4,6 +4,7 @@ import com.gamepulse.core.exception.CapacityExceededException;
 import com.gamepulse.core.exception.DuplicateResourceException;
 import com.gamepulse.core.exception.InvalidStateTransitionException;
 import com.gamepulse.core.exception.ResourceNotFoundException;
+import com.gamepulse.core.resilience.DownstreamNotificationService;
 import com.gamepulse.player.model.Player;
 import com.gamepulse.player.model.PlayerStatus;
 import com.gamepulse.player.service.PlayerService;
@@ -19,6 +20,7 @@ import com.gamepulse.session.repository.MatchSessionPlayerRepository;
 import com.gamepulse.session.repository.MatchSessionRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -36,13 +38,23 @@ public class MatchSessionService {
     private final MatchSessionRepository matchSessionRepository;
     private final MatchSessionPlayerRepository matchSessionPlayerRepository;
     private final PlayerService playerService;
+    private final DownstreamNotificationService downstreamNotificationService;
 
     public MatchSessionService(MatchSessionRepository matchSessionRepository,
                                MatchSessionPlayerRepository matchSessionPlayerRepository,
                                PlayerService playerService) {
+        this(matchSessionRepository, matchSessionPlayerRepository, playerService, null);
+    }
+
+    @Autowired
+    public MatchSessionService(MatchSessionRepository matchSessionRepository,
+                               MatchSessionPlayerRepository matchSessionPlayerRepository,
+                               PlayerService playerService,
+                               @Autowired(required = false) DownstreamNotificationService downstreamNotificationService) {
         this.matchSessionRepository = matchSessionRepository;
         this.matchSessionPlayerRepository = matchSessionPlayerRepository;
         this.playerService = playerService;
+        this.downstreamNotificationService = downstreamNotificationService;
     }
 
     @Transactional
@@ -151,6 +163,12 @@ public class MatchSessionService {
 
         MatchSession updated = matchSessionRepository.save(session);
         log.info("Match session completed: id={}, winnerId={}", sessionId, session.getWinnerId());
+
+        // Resilient downstream event notification with Circuit Breaker and bounded retry
+        if (downstreamNotificationService != null) {
+            downstreamNotificationService.notifyMatchCompleted(sessionId, session.getWinnerId());
+        }
+
         return MatchSessionResponse.fromEntity(updated);
     }
 

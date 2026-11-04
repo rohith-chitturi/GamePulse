@@ -1,22 +1,29 @@
 package com.gamepulse.core.exception;
 
 import com.gamepulse.core.filter.CorrelationIdFilter;
+import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
+import io.github.resilience4j.ratelimiter.RequestNotPermitted;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.CannotCreateTransactionException;
+import org.springframework.transaction.TransactionException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import java.sql.SQLTransientConnectionException;
 import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Centralized exception translator producing consistent, correlation-aware API responses.
+ * Centralized exception translator producing consistent, correlation-aware API responses
+ * with dedicated RFC 7807 resilience and dependency failure handlers.
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -36,6 +43,56 @@ public class GlobalExceptionHandler {
                 null
         );
         return ResponseEntity.status(ex.getStatus()).body(body);
+    }
+
+    @ExceptionHandler({
+            CannotCreateTransactionException.class,
+            DataAccessResourceFailureException.class,
+            TransactionException.class,
+            SQLTransientConnectionException.class
+    })
+    public ResponseEntity<ApiErrorResponse> handleDatabaseConnectionException(Exception ex, HttpServletRequest request) {
+        log.error("Database connection failure on URI [{}]: {}", request.getRequestURI(), ex.getMessage());
+        ApiErrorResponse body = new ApiErrorResponse(
+                HttpStatus.SERVICE_UNAVAILABLE.value(),
+                HttpStatus.SERVICE_UNAVAILABLE.getReasonPhrase(),
+                "DATABASE_UNAVAILABLE",
+                "Authoritative database is currently unreachable or connection pool exhausted. Please retry shortly.",
+                request.getRequestURI(),
+                getCorrelationId(),
+                null
+        );
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(body);
+    }
+
+    @ExceptionHandler(CallNotPermittedException.class)
+    public ResponseEntity<ApiErrorResponse> handleCallNotPermittedException(CallNotPermittedException ex, HttpServletRequest request) {
+        log.warn("Resilience4j Circuit Breaker OPEN on URI [{}]: {}", request.getRequestURI(), ex.getMessage());
+        ApiErrorResponse body = new ApiErrorResponse(
+                HttpStatus.SERVICE_UNAVAILABLE.value(),
+                HttpStatus.SERVICE_UNAVAILABLE.getReasonPhrase(),
+                "CIRCUIT_BREAKER_OPEN",
+                String.format("Service circuit breaker [%s] is OPEN. Operation is temporarily unavailable.", ex.getCausingCircuitBreakerName()),
+                request.getRequestURI(),
+                getCorrelationId(),
+                null
+        );
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(body);
+    }
+
+    @ExceptionHandler(RequestNotPermitted.class)
+    public ResponseEntity<ApiErrorResponse> handleRequestNotPermitted(RequestNotPermitted ex, HttpServletRequest request) {
+        log.warn("Rate limit exceeded on URI [{}]: {}", request.getRequestURI(), ex.getMessage());
+        ApiErrorResponse body = new ApiErrorResponse(
+                HttpStatus.TOO_MANY_REQUESTS.value(),
+                HttpStatus.TOO_MANY_REQUESTS.getReasonPhrase(),
+                "RATE_LIMIT_EXCEEDED",
+                "Request rate limit exceeded. Please throttle outgoing requests.",
+                request.getRequestURI(),
+                getCorrelationId(),
+                null
+        );
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(body);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
