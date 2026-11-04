@@ -1,0 +1,163 @@
+services:
+  # ============================================================================
+  # Authoritative Relational Database (PostgreSQL 15)
+  # ============================================================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: gamepulse-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-gamepulsedb}
+      POSTGRES_USER: ${POSTGRES_USER:-gamepulse}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gamepulse_dev_password}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-gamepulse} -d ${POSTGRES_DB:-gamepulsedb}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - gamepulse-net
+
+  # ============================================================================
+  # Distributed Cache & State Store (Redis 7)
+  # Available in dev infrastructure; application integration pending Phase 3
+  # ============================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: gamepulse-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT:-6381}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks:
+      - gamepulse-net
+
+  # ============================================================================
+  # GamePulse Gameplay Services Backend (Spring Boot 3.3.5 / Java 17)
+  # ============================================================================
+  gamepulse-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gamepulse-app
+    restart: unless-stopped
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-gamepulsedb}
+      SPRING_DATASOURCE_DRIVER: org.postgresql.Driver
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-gamepulse}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-gamepulse_dev_password}
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      SPRING_REDIS_HOST: redis
+      SPRING_REDIS_PORT: 6379
+      SERVER_PORT: 8080
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: "health,info,prometheus,metrics"
+      MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED: "true"
+      MANAGEMENT_ENDPOINT_PROMETHEUS_ENABLED: "true"
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      start_period: 35s
+      retries: 5
+    networks:
+      - gamepulse-net
+
+  # ============================================================================
+  # Metrics Collection & Time-Series Engine (Prometheus)
+  # ============================================================================
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: gamepulse-prometheus
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+      - "--web.console.templates=/usr/share/prometheus/consoles"
+      - "--web.enable-lifecycle"
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    depends_on:
+      gamepulse-app:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - gamepulse-net
+
+  # ============================================================================
+  # Observability Dashboard (Grafana 11)
+  # ============================================================================
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: gamepulse-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    volumes:
+      - ./monitoring/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./monitoring/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - gamepulse-net
+
+# ==============================================================================
+# Persistent Named Storage
+# ==============================================================================
+volumes:
+  postgres_data:
+    name: gamepulse_postgres_data
+  redis_data:
+    name: gamepulse_redis_data
+  prometheus_data:
+    name: gamepulse_prometheus_data
+  grafana_data:
+    name: gamepulse_grafana_data
+
+# ==============================================================================
+# Isolated Internal Network
+# ==============================================================================
+networks:
+  gamepulse-net:
+    name: gamepulse-net
+    driver: bridge
+
