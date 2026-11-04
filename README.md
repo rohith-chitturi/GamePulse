@@ -121,6 +121,7 @@ flowchart TD
 ### Prerequisites
 - **Java**: JDK 17 LTS or higher installed (`java -version`).
 - **Maven**: 3.9+ (or use the included `./mvnw` / `mvnw.cmd` wrapper).
+- **Docker & Docker Compose**: Docker Desktop or Docker Engine 20.10+ with Compose v2+ (`docker compose version`).
 - **Git**: For repository cloning and branch management.
 
 ### 1. Clone & Build
@@ -147,20 +148,46 @@ cp .env.example .env
 # Build and start the complete 5-container infrastructure stack
 docker compose up -d --build
 
-# Verify container health status
+# Verify container health status (all 5 services will report healthy)
 docker compose ps
+
+# Follow application logs
+docker compose logs -f gamepulse-app
+
+# Stop the stack preserving named database volumes
+docker compose down
+
+# Stop the stack and wipe volumes (clean reset)
+docker compose down -v
 ```
 
-| Service | Container Name | Host Port | Internal Port | Health Probe |
-| :--- | :--- | :--- | :--- | :--- |
-| **GamePulse App** | `gamepulse-app` | `8080` | `8080` | `/actuator/health` |
-| **PostgreSQL 15** | `gamepulse-postgres` | `5433` | `5432` | `pg_isready` |
-| **Redis 7** | `gamepulse-redis` | `6381` | `6379` | `redis-cli ping` |
-| **Prometheus** | `gamepulse-prometheus` | `9090` | `9090` | `/-/healthy` |
-| **Grafana 11** | `gamepulse-grafana` | `3000` | `3000` | `/api/health` |
+#### Service URLs, Ports & Health Probes
+
+| Service | Container Name | Host Port | Internal Port | URL / Health Probe | Verified Status |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **GamePulse App** | `gamepulse-app` | `8080` | `8080` | `http://localhost:8080/actuator/health` | Healthy (`status: UP`, DB connected) |
+| **PostgreSQL 15** | `gamepulse-postgres` | `5433` | `5432` | `docker exec gamepulse-postgres pg_isready` | Healthy (accepts connections, data persists) |
+| **Redis 7** | `gamepulse-redis` | `6381` | `6379` | `docker exec gamepulse-redis redis-cli ping` | Healthy (`PONG` connectivity verified) |
+| **Prometheus** | `gamepulse-prometheus` | `9090` | `9090` | `http://localhost:9090/-/healthy` | Healthy (scrapes `gamepulse-app:8080`) |
+| **Grafana 11** | `gamepulse-grafana` | `3000` | `3000` | `http://localhost:3000/api/health` | Healthy (auto-provisioned Prometheus source) |
 
 > [!NOTE]
 > Host ports for PostgreSQL (`5433`) and Redis (`6381`) are mapped to non-standard ports to prevent collisions with existing local databases on developer workstations. Internal container networking communicates over standard DNS (`postgres:5432`, `redis:6379`).
+
+#### Infrastructure Verification Commands
+```bash
+# Verify GamePulse application health and PostgreSQL connection
+curl -s http://localhost:8080/actuator/health
+
+# Verify Prometheus metrics scrape target status
+curl -s http://localhost:9090/api/v1/targets
+
+# Verify Grafana API health and Prometheus datasource
+curl -s -u admin:admin http://localhost:3000/api/datasources/uid/PBFA97CFB590B2093/health
+
+# Verify Redis ping response
+docker exec gamepulse-redis redis-cli ping
+```
 
 ### 3. Run Locally (Embedded H2 Mode)
 GamePulse is configured out of the box with an embedded, PostgreSQL-compatible in-memory database. No external database installation is required to run the service locally:
@@ -206,8 +233,8 @@ export SPRING_DATASOURCE_DRIVER=org.postgresql.Driver
 | **Matchmaking** | `POST` | `/api/v1/matchmaking/queue` | Enqueue player for deterministic matchmaking |
 | **Matchmaking** | `DELETE`| `/api/v1/matchmaking/queue/{ticketId}` | Cancel an active matchmaking ticket |
 | **Matchmaking** | `GET` | `/api/v1/matchmaking/tickets/{ticketId}` | Query ticket status (`QUEUED`, `MATCHED`, `CANCELLED`) |
-| **Lobbies** | `POST` | `/api/v1/lobbies` | Create a new match lobby (supports `Idempotency-Key`) |
-| **Lobbies** | `POST` | `/api/v1/lobbies/{sessionId}/join` | Join a lobby with capacity check (supports `Idempotency-Key`) |
+| **Lobbies** | `POST` | `/api/v1/matches/lobbies` | Create a new match lobby (supports `Idempotency-Key`) |
+| **Lobbies** | `POST` | `/api/v1/matches/{id}/join` | Join a lobby with capacity check (supports `Idempotency-Key`) |
 | **Matches** | `POST` | `/api/v1/matches/{sessionId}/start` | Transition lobby to `IN_PROGRESS` |
 | **Matches** | `POST` | `/api/v1/matches/{sessionId}/complete`| Complete match and record winner |
 | **Matches** | `POST` | `/api/v1/matches/{sessionId}/cancel` | Cancel match with reason |
@@ -270,18 +297,17 @@ curl -X POST http://localhost:8080/api/v1/matchmaking/queue \
 #### 3. Create and Join a Lobby
 ```bash
 # Create 2-player lobby
-curl -X POST http://localhost:8080/api/v1/lobbies \
+curl -X POST http://localhost:8080/api/v1/matches/lobbies \
   -H "Content-Type: application/json" \
   -H "Idempotency-Key: idemp-lobby-001" \
   -d '{
     "title": "Championship Finals",
-    "gameMode": "COMPETITIVE_2v2",
-    "maxPlayers": 2,
-    "hostPlayerId": "e4f8d2a1-3b7c-4d5e-9f0a-1b2c3d4e5f6a"
+    "gameMode": "DUEL_1V1",
+    "maxPlayers": 2
   }'
 
 # Second player joins the lobby
-curl -X POST http://localhost:8080/api/v1/lobbies/{sessionId}/join \
+curl -X POST http://localhost:8080/api/v1/matches/{id}/join \
   -H "Content-Type: application/json" \
   -d '{
     "playerId": "b1c2d3e4-5f6a-7b8c-9d0e-1f2a3b4c5d6e",
@@ -365,6 +391,8 @@ BUILD SUCCESS
 | `409 Conflict` with `DUPLICATE_RESOURCE` | Player already in queue or username taken | Ensure player completes or cancels active ticket before re-enqueuing. |
 | `409 Conflict` with `IDEMPOTENCY_KEY_PAYLOAD_MISMATCH` | Idempotency key reused with different JSON body | Generate a new UUID for the `Idempotency-Key` header on distinct operations. |
 | `409 Conflict` with `CONCURRENT_REQUEST_IN_FLIGHT` | Previous request with same key is still processing | Wait for initial request to finish or inspect response headers. |
+| Host port conflict (`5432` or `6379` already in use) | Local PostgreSQL or Redis server running on host | Set `POSTGRES_PORT=5433` and `REDIS_PORT=6381` in `.env` (defaults in `.env.example`). |
+| Container health check probe fails on startup | Database initializing or slow disk I/O | Containers have 30–35s start periods; inspect logs with `docker compose logs -f gamepulse-app`. |
 | `PostgreSqlConcurrencyIntegrationTest` skipped | Running on Windows host without active Linux Docker socket | Expected behavior. Tests execute natively in the Ubuntu GitHub Actions CI runner. |
 
 ---

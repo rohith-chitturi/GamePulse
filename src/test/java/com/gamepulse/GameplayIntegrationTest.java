@@ -1,13 +1,17 @@
 package com.gamepulse;
 
 import com.gamepulse.matchmaking.dto.EnqueueRequest;
+import com.gamepulse.matchmaking.repository.MatchmakingTicketRepository;
 import com.gamepulse.player.dto.CreatePlayerRequest;
 import com.gamepulse.player.dto.PlayerResponse;
+import com.gamepulse.player.repository.PlayerRepository;
 import com.gamepulse.session.dto.CompleteMatchRequest;
 import com.gamepulse.session.dto.CreateLobbyRequest;
 import com.gamepulse.session.dto.JoinLobbyRequest;
+import com.gamepulse.session.repository.MatchSessionRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -38,12 +42,28 @@ class GameplayIntegrationTest {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired
+    private MatchmakingTicketRepository ticketRepository;
+
+    @Autowired
+    private MatchSessionRepository matchSessionRepository;
+
+    @Autowired
+    private PlayerRepository playerRepository;
+
+    @BeforeEach
+    void setUp() {
+        ticketRepository.deleteAll();
+        matchSessionRepository.deleteAll();
+        playerRepository.deleteAll();
+    }
+
     @Test
     @DisplayName("End-to-End: Matchmaking queue deterministically matches eligible players and creates active session")
     void testEndToEndMatchmakingFlow() throws Exception {
         // 1. Create two eligible players with close MMR
-        PlayerResponse p1 = createPlayerViaApi("Titan_Alpha", "alpha@ea.com", 1200);
-        PlayerResponse p2 = createPlayerViaApi("Titan_Bravo", "bravo@ea.com", 1240);
+        PlayerResponse p1 = createPlayerViaApi("Titan_Alpha", "alpha@gamepulse.com", 1200);
+        PlayerResponse p2 = createPlayerViaApi("Titan_Bravo", "bravo@gamepulse.com", 1240);
 
         // 2. Enqueue Player 1
         MvcResult enqueueResult1 = mockMvc.perform(post("/api/v1/matchmaking/queue")
@@ -96,9 +116,9 @@ class GameplayIntegrationTest {
     @Test
     @DisplayName("End-to-End: Custom lobby lifecycle with capacity boundary enforcement")
     void testCustomLobbyLifecycle() throws Exception {
-        PlayerResponse host = createPlayerViaApi("LobbyHost", "host@ea.com", 1000);
-        PlayerResponse guest = createPlayerViaApi("LobbyGuest", "guest@ea.com", 1000);
-        PlayerResponse intruder = createPlayerViaApi("Intruder", "intruder@ea.com", 1000);
+        PlayerResponse host = createPlayerViaApi("LobbyHost", "host@gamepulse.com", 1000);
+        PlayerResponse guest = createPlayerViaApi("LobbyGuest", "guest@gamepulse.com", 1000);
+        PlayerResponse intruder = createPlayerViaApi("Intruder", "intruder@gamepulse.com", 1000);
 
         // 1. Create 2-player lobby
         CreateLobbyRequest lobbyRequest = new CreateLobbyRequest("1v1 Showdown", "DUEL_1V1", 2);

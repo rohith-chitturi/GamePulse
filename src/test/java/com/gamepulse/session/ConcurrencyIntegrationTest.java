@@ -16,6 +16,7 @@ import com.gamepulse.session.model.MatchSession;
 import com.gamepulse.session.repository.MatchSessionRepository;
 import com.gamepulse.session.service.MatchSessionService;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -65,6 +66,12 @@ class ConcurrencyIntegrationTest {
 
     @Autowired
     private MatchmakingService matchmakingService;
+
+    @AfterEach
+    void tearDown() {
+        ticketRepository.deleteAll();
+        matchSessionRepository.deleteAll();
+    }
 
     @Test
     @DisplayName("Concurrency: 10 parallel joins for 1 remaining lobby slot; exactly 1 succeeds, DB capacity never exceeded")
@@ -190,4 +197,3 @@ class ConcurrencyIntegrationTest {
         assertThat(activeTickets).isEqualTo(1);
     }
 }
-
