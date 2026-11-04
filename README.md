@@ -101,17 +101,18 @@ flowchart TD
 | **Java 17 LTS** | Core backend language runtime | Implemented & Verified |
 | **Spring Boot 3.3.5** | Microservice framework, dependency injection, auto-configuration | Implemented & Verified |
 | **Spring Data JPA / Hibernate 6** | Object-relational mapping, repositories, transaction boundaries | Implemented & Verified |
-| **PostgreSQL 15** | Production authoritative relational database | Configured & Supported |
+| **PostgreSQL 15** | Production authoritative relational database | Implemented & Containerized |
 | **H2 Database** | Fast, zero-dependency in-memory database for local runs and unit testing | Implemented & Verified |
 | **Testcontainers 1.20** | Containerized real PostgreSQL database for integration tests | Configured (CI verified) |
 | **SpringDoc OpenAPI 2.6** | Swagger UI and OpenAPI 3.0 specification generation | Implemented & Verified |
-| **Micrometer & Prometheus** | Telemetry and metrics exposition endpoint | Implemented & Verified |
+| **Micrometer & Prometheus** | Telemetry collection and scrape target (`/actuator/prometheus`) | Implemented & Orchestrated |
+| **Grafana 11** | Real-time observability dashboard provisioned via YAML | Implemented & Orchestrated |
+| **Docker & Docker Compose** | Multi-stage production container and 5-service local stack | Implemented & Verified |
 | **JUnit 5 & Mockito** | Automated testing, unit mocks, and concurrency assertion suites | Implemented & Verified |
-| **GitHub Actions** | Automated CI quality gate running builds and test suites on Ubuntu | Implemented & Verified |
-| *Redis 7* | Distributed cache and queue state coordination | Planned (Phase 3) |
+| **GitHub Actions** | Automated CI quality gate running builds, tests, and container builds on Ubuntu | Implemented & Verified |
+| *Redis 7* | Distributed cache and queue state coordination (containerized in compose) | Infrastructure Configured (Phase 3 integration) |
 | *Resilience4j* | Circuit breakers, rate limiters, and retry policies | Planned (Phase 3) |
 | *k6* | Distributed load testing and controlled reliability experiments | Planned (Phase 5) |
-| *Docker & Docker Compose* | Multi-container local orchestration | Planned (Phase 6) |
 
 ---
 
@@ -136,7 +137,32 @@ cd GamePulse
 .\mvnw.cmd clean test
 ```
 
-### 2. Run Locally
+### 2. Run with Docker Compose (Recommended)
+GamePulse provides a complete local infrastructure stack orchestrating PostgreSQL 15, Redis 7, Prometheus, Grafana, and the Spring Boot application:
+
+```bash
+# Copy example environment configuration
+cp .env.example .env
+
+# Build and start the complete 5-container infrastructure stack
+docker compose up -d --build
+
+# Verify container health status
+docker compose ps
+```
+
+| Service | Container Name | Host Port | Internal Port | Health Probe |
+| :--- | :--- | :--- | :--- | :--- |
+| **GamePulse App** | `gamepulse-app` | `8080` | `8080` | `/actuator/health` |
+| **PostgreSQL 15** | `gamepulse-postgres` | `5433` | `5432` | `pg_isready` |
+| **Redis 7** | `gamepulse-redis` | `6381` | `6379` | `redis-cli ping` |
+| **Prometheus** | `gamepulse-prometheus` | `9090` | `9090` | `/-/healthy` |
+| **Grafana 11** | `gamepulse-grafana` | `3000` | `3000` | `/api/health` |
+
+> [!NOTE]
+> Host ports for PostgreSQL (`5433`) and Redis (`6381`) are mapped to non-standard ports to prevent collisions with existing local databases on developer workstations. Internal container networking communicates over standard DNS (`postgres:5432`, `redis:6379`).
+
+### 3. Run Locally (Embedded H2 Mode)
 GamePulse is configured out of the box with an embedded, PostgreSQL-compatible in-memory database. No external database installation is required to run the service locally:
 
 ```bash
@@ -149,7 +175,7 @@ GamePulse is configured out of the box with an embedded, PostgreSQL-compatible i
 
 The application starts on `http://localhost:8080`.
 
-### 3. Connect to External PostgreSQL (Optional)
+### 4. Connect to External PostgreSQL (Optional)
 To run GamePulse against a standalone PostgreSQL instance, set standard Spring datasource environment variables:
 
 ```bash
@@ -361,7 +387,7 @@ BUILD SUCCESS
 - [ ] **Phase 3 — Redis & Service Resilience**: Redis distributed state, Resilience4j circuit breakers, rate limiters, and test fault injection.
 - [ ] **Phase 4 — Observability & Telemetry**: Custom Micrometer gameplay metrics (queue depth, match formation latency), Grafana dashboard configuration.
 - [ ] **Phase 5 — Load Testing & Chaos Experiments**: Automated k6 load generation, controlled failure injection, and empirical before/after latency benchmarking.
-- [ ] **Phase 6 — Docker & CI/CD Hardening**: Multi-stage production `Dockerfile`, `docker-compose.yml` (App, PostgreSQL, Redis, Prometheus, Grafana).
+- [x] **Phase 6 — Docker & CI/CD Hardening**: Multi-stage production `Dockerfile`, `docker-compose.yml` (App, PostgreSQL, Redis, Prometheus, Grafana) ([PR #6](https://github.com/rohith-chitturi/GamePulse/pull/6)).
 - [ ] **Phase 7 — Operations Dashboard**: Lightweight operations dashboard visualizing live queues and circuit breaker states.
 
 ---

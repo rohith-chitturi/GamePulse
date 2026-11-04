@@ -30,6 +30,12 @@ jobs:
       - name: Compile and Run Test Suite
         run: ./mvnw clean verify -B
 
+      - name: Validate Docker Compose Configuration
+        run: docker compose config
+
+      - name: Build Production Container Image
+        run: docker build -t gamepulse:ci .
+
       - name: Upload Test Reports (on failure)
         if: failure()
         uses: actions/upload-artifact@v4
