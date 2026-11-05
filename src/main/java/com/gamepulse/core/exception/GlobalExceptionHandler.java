@@ -3,7 +3,9 @@ package com.gamepulse.core.exception;
 import com.gamepulse.core.filter.CorrelationIdFilter;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.ratelimiter.RequestNotPermitted;
+import jakarta.persistence.OptimisticLockException;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -113,6 +115,36 @@ public class GlobalExceptionHandler {
                 errors
         );
         return ResponseEntity.badRequest().body(body);
+    }
+
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<ApiErrorResponse> handleIllegalStateException(IllegalStateException ex, HttpServletRequest request) {
+        log.warn("Illegal state conflict on URI [{}]: {}", request.getRequestURI(), ex.getMessage());
+        ApiErrorResponse body = new ApiErrorResponse(
+                HttpStatus.CONFLICT.value(),
+                HttpStatus.CONFLICT.getReasonPhrase(),
+                "INVALID_STATE",
+                ex.getMessage(),
+                request.getRequestURI(),
+                getCorrelationId(),
+                null
+        );
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
+    }
+
+    @ExceptionHandler({ObjectOptimisticLockingFailureException.class, OptimisticLockException.class})
+    public ResponseEntity<ApiErrorResponse> handleOptimisticLockingFailure(Exception ex, HttpServletRequest request) {
+        log.warn("Optimistic locking conflict on URI [{}]: {}", request.getRequestURI(), ex.getMessage());
+        ApiErrorResponse body = new ApiErrorResponse(
+                HttpStatus.CONFLICT.value(),
+                HttpStatus.CONFLICT.getReasonPhrase(),
+                "CONCURRENCY_CONFLICT",
+                "The requested resource was concurrently modified by another transaction. Please retry.",
+                request.getRequestURI(),
+                getCorrelationId(),
+                null
+        );
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

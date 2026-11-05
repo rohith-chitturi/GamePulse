@@ -386,7 +386,32 @@ A comprehensive automated failure testing script ([scripts/verify-resilience.ps1
 
 ---
 
-## 10. Automated Testing & Verification
+## 10. Performance Engineering & Load Testing
+
+GamePulse includes an automated, production-style load testing and performance characterization harness built on **Grafana k6** located in `load-tests/`. The suite evaluates high-concurrency player registration, cache-aside read performance, deterministic matchmaking queue claiming, and lobby capacity boundaries under controlled traffic profiles.
+
+### Empirical Benchmark Summary
+
+All tests executed against the live multi-container Docker Compose environment (`gamepulse-app`, `gamepulse-postgres`, `gamepulse-redis`, `gamepulse-prometheus`, `gamepulse-grafana`) on 14-core hardware:
+
+| Workload Profile | Virtual Users (VUs) | Duration | Total Requests | Throughput | Avg Latency | p95 Latency | Profile Read p95 | Unexpected Errors | SLA Status |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Baseline** | 25 | 2m 00s | 25,002 | 207.78 req/s | 62.80 ms | 205.19 ms | 45.55 ms | **0.00%** | **PASS** |
+| **Moderate** | 50 | 3m 00s | 46,370 | 257.55 req/s | 124.68 ms | 389.50 ms | 123.00 ms | **0.00%** | **PASS** |
+| **High** | 100 | 3m 00s | 47,336 | 262.60 req/s | 281.61 ms | 871.72 ms | 465.00 ms | **0.00%** | Capacity Saturated |
+
+### Verified Concurrency & Data Integrity Invariants
+- **Zero Duplicate Queue Tickets**: Across 46,370+ requests, 1,528 concurrent duplicate queue attempts were cleanly rejected with RFC 7807 409 Conflict (`DUPLICATE_RESOURCE` / `INVALID_STATE_TRANSITION`).
+- **Zero Overcapacity Lobbies**: 2,117 attempts to exceed lobby capacity limits were rejected with 409 Conflict (`CAPACITY_EXCEEDED`).
+- **Idempotency Replay Cache**: 2,117 idempotent replay requests returned cached 201 responses with header `Idempotency-Replayed: true`.
+- **Redis Cache-Aside Acceleration**: 3,766 repeated profile reads were served directly from Redis with sub-millisecond cache latency.
+- **HikariCP Pool Resiliency**: Connection pool bounded to 25 connections max; zero connection timeouts or leaks observed under 50+ concurrent virtual users.
+
+> For comprehensive latency percentiles, bottleneck investigations, and Grafana dashboard details, refer to the [Performance Benchmark Report](docs/PERFORMANCE_BENCHMARK_REPORT.md).
+
+---
+
+## 11. Automated Testing & Verification
 
 ```
 -------------------------------------------------------
@@ -424,7 +449,7 @@ BUILD SUCCESS
 
 ---
 
-## 11. Observability & Troubleshooting
+## 12. Observability & Troubleshooting
 
 ### Operational Telemetry
 - **Correlation IDs**: Every HTTP request receives or inherits an `X-Correlation-Id`. Log messages output structured correlation context:
@@ -448,7 +473,7 @@ BUILD SUCCESS
 
 ---
 
-## 12. Engineering Decisions & Trade-offs
+## 13. Engineering Decisions & Trade-offs
 
 - **Deterministic FIFO Matchmaking over Complex Heuristics**: Deterministic FIFO matchmaking with dynamically expanding MMR windows was chosen over speculative ELO algorithms to keep match formation verifiable, reproducible, and transparent for testing.
 - **Pessimistic Row Locking for Lobby Capacity**: High contention occurs at the capacity boundary (e.g. 1 slot remaining in a competitive lobby). Optimistic locking would cause frequent transaction aborts and user retries. Pessimistic row locking (`SELECT ... FOR UPDATE`) serializes the join sequence safely.
@@ -457,7 +482,7 @@ BUILD SUCCESS
 
 ---
 
-## 13. Project Roadmap
+## 14. Project Roadmap
 
 - [x] **Phase 0 — Repository & Project Foundation**: Maven baseline, Java 17 LTS, CI Quality Gate, Correlation ID filter, OpenAPI documentation ([PR #1](https://github.com/rohith-chitturi/GamePulse/pull/1)).
 - [x] **Phase 1 — Gameplay Backend Services**: Player profiles, deterministic matchmaking, lobby/session lifecycle state machines, RFC 7807 error responses ([PR #2](https://github.com/rohith-chitturi/GamePulse/pull/2)).
@@ -468,11 +493,11 @@ BUILD SUCCESS
 - [ ] **Phase 5 — Load Testing & Chaos Experiments**: Automated k6 load generation, controlled failure injection, and empirical before/after latency benchmarking.
 - [x] **Phase 6 — Docker & CI/CD Hardening**: Multi-stage production `Dockerfile`, `docker-compose.yml` (App, PostgreSQL, Redis, Prometheus, Grafana) ([PR #6](https://github.com/rohith-chitturi/GamePulse/pull/6)).
 - [x] **Phase 7 — Resilience Engineering & Failure Testing**: Multi-tier fault tolerance, Resilience4j circuit breakers, bounded retries with backoff, Redis 7 cache-aside degradation, RFC 7807 503 database failure handling, live chaos injection, and 7 automated failure experiments ([docs/RESILIENCE_TEST_REPORT.md](docs/RESILIENCE_TEST_REPORT.md)).
-- [ ] **Phase 8 — Operations Dashboard**: Lightweight operations dashboard visualizing live queues and circuit breaker states.
+- [x] **Phase 8 — Load Testing & Performance Benchmarking**: Structured k6 suite (Player Profile, Matchmaking, Lobby Lifecycle), 5 traffic profiles, entity detachment concurrency fix, tuned HikariCP connection pool, Grafana performance dashboard, and empirical latency verification ([docs/PERFORMANCE_BENCHMARK_REPORT.md](docs/PERFORMANCE_BENCHMARK_REPORT.md)).
 
 ---
 
-## 14. Project Demonstration Walkthrough
+## 15. Project Demonstration Walkthrough
 
 To verify GamePulse locally in under two minutes:
 1. **Run the Automated Concurrency Suite**:
@@ -491,7 +516,7 @@ To verify GamePulse locally in under two minutes:
 
 ---
 
-## 15. Current Engineering Limitations
+## 16. Current Engineering Limitations
 
 - **Single-Instance Locking Scope**: Pessimistic row locking provides absolute correctness within a shared PostgreSQL database. Distributed multi-region deployments with partitioned databases will require distributed locks (e.g. Redlock via Redis) planned for upcoming phases.
 - **Windows Docker Testcontainers Compatibility**: Due to Windows named-pipe translation with Docker Desktop WSL2, containerized Testcontainers tests are skipped on local Windows hosts and run natively on Linux runners in GitHub Actions CI.

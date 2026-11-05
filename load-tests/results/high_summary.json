@@ -1,0 +1,317 @@
+{
+    "metrics": {
+        "http_req_waiting": {
+            "avg": 281.15322637949777,
+            "min": 1.0728,
+            "med": 191.38569999999999,
+            "max": 3229.3082,
+            "p(90)": 660.5102999999999,
+            "p(95)": 871.3604
+        },
+        "http_req_sending": {
+            "med": 0,
+            "max": 58.828,
+            "p(90)": 0,
+            "p(95)": 0.5378,
+            "avg": 0.05986480902484377,
+            "min": 0
+        },
+        "iterations": {
+            "count": 8603,
+            "rate": 47.72526677630834
+        },
+        "http_req_duration": {
+            "avg": 281.61269349966295,
+            "min": 1.0728,
+            "med": 191.80855,
+            "max": 3229.3082,
+            "p(90)": 660.71045,
+            "p(95)": 871.724625,
+            "thresholds": {
+                "p(95)<500": true,
+                "p(99)<1200": true
+            }
+        },
+        "http_req_failed": {
+            "passes": 4717,
+            "fails": 42619,
+            "value": 0.09964931553151934
+        },
+        "duplicate_queue_rejections": {
+            "count": 1491,
+            "rate": 8.271344038530248
+        },
+        "http_reqs": {
+            "count": 47336,
+            "rate": 262.5971438013869
+        },
+        "http_req_receiving": {
+            "max": 142.9787,
+            "p(90)": 0.68055,
+            "p(95)": 1.338825,
+            "avg": 0.39960231113740224,
+            "min": 0,
+            "med": 0
+        },
+        "redis_cache_hits_simulated": {
+            "count": 3886,
+            "rate": 21.557641135968172
+        },
+        "vus_max": {
+            "min": 100,
+            "max": 100,
+            "value": 100
+        },
+        "http_req_blocked": {
+            "med": 0,
+            "max": 172.5756,
+            "p(90)": 0,
+            "p(95)": 0,
+            "avg": 0.04660061686665538,
+            "min": 0
+        },
+        "vus": {
+            "min": 2,
+            "max": 100,
+            "value": 2
+        },
+        "http_req_connecting": {
+            "p(95)": 0,
+            "avg": 0.026218417272266346,
+            "min": 0,
+            "med": 0,
+            "max": 172.5756,
+            "p(90)": 0
+        },
+        "http_req_tls_handshaking": {
+            "p(95)": 0,
+            "avg": 0,
+            "min": 0,
+            "med": 0,
+            "max": 0,
+            "p(90)": 0
+        },
+        "redis_cache_misses_simulated": {
+            "count": 3886,
+            "rate": 21.557641135968172
+        },
+        "profile_read_latency_ms": {
+            "avg": 151.673829130211,
+            "min": 1,
+            "med": 110,
+            "max": 1874,
+            "p(90)": 343.90000000000055,
+            "p(95)": 465,
+            "thresholds": {
+                "p(95)<250": true
+            }
+        },
+        "data_sent": {
+            "count": 14228833,
+            "rate": 78934.65661287222
+        },
+        "idempotent_replays": {
+            "count": 2154,
+            "rate": 11.949346116025591
+        },
+        "checks": {
+            "passes": 59413,
+            "fails": 0,
+            "value": 1
+        },
+        "lobby_capacity_rejections": {
+            "count": 2154,
+            "rate": 11.949346116025591
+        },
+        "http_req_duration{expected_response:true}": {
+            "avg": 295.2855368896505,
+            "min": 1.0728,
+            "med": 203.4798,
+            "max": 3229.3082,
+            "p(90)": 687.7968200000001,
+            "p(95)": 898.3791899999993
+        },
+        "data_received": {
+            "count": 31710075,
+            "rate": 175912.09913655068
+        },
+        "iteration_duration": {
+            "p(90)": 3716.2251600000004,
+            "p(95)": 4740.044619999999,
+            "avg": 1755.0646382540976,
+            "min": 177.532,
+            "med": 1333.5016,
+            "max": 9364.8018
+        },
+        "unexpected_http_errors": {
+            "passes": 0,
+            "fails": 31186,
+            "thresholds": {
+                "rate<0.01": false
+            },
+            "value": 0
+        }
+    },
+    "root_group": {
+        "path": "",
+        "id": "d41d8cd98f00b204e9800998ecf8427e",
+        "groups": {},
+        "checks": {
+                "enqueue status is 201": {
+                    "name": "enqueue status is 201",
+                    "path": "::enqueue status is 201",
+                    "id": "6672ed7f48092f0eba3860ff4b9ff5f6",
+                    "passes": 2563,
+                    "fails": 0
+                },
+                "ticket status is valid": {
+                    "fails": 0,
+                    "name": "ticket status is valid",
+                    "path": "::ticket status is valid",
+                    "id": "866588d2808800143604ddc2f8f9cfb2",
+                    "passes": 2563
+                },
+                "query ticket status is 200": {
+                    "passes": 2563,
+                    "fails": 0,
+                    "name": "query ticket status is 200",
+                    "path": "::query ticket status is 200",
+                    "id": "2f1d07a30985015cb2bb0bfeff971e77"
+                },
+                "duplicate enqueue returns 409 or 201 if matched": {
+                    "id": "9ec4e0e51ea700ff722e1827bf68d03c",
+                    "passes": 1491,
+                    "fails": 0,
+                    "name": "duplicate enqueue returns 409 or 201 if matched",
+                    "path": "::duplicate enqueue returns 409 or 201 if matched"
+                },
+                "duplicate error code is valid conflict": {
+                    "name": "duplicate error code is valid conflict",
+                    "path": "::duplicate error code is valid conflict",
+                    "id": "9c8aa3e135eb5c5ee9cf7a0492d877c3",
+                    "passes": 1491,
+                    "fails": 0
+                },
+                "create player status is 201": {
+                    "name": "create player status is 201",
+                    "path": "::create player status is 201",
+                    "id": "610807486562b4fa2c18725a88f35a31",
+                    "passes": 3886,
+                    "fails": 0
+                },
+                "create player returns valid id": {
+                    "fails": 0,
+                    "name": "create player returns valid id",
+                    "path": "::create player returns valid id",
+                    "id": "da3e8a52c33ebbc84f847861ba9346ec",
+                    "passes": 3886
+                },
+                "read player status is 200": {
+                    "name": "read player status is 200",
+                    "path": "::read player status is 200",
+                    "id": "f5de3ca0f70d377eb7559af53703a9d2",
+                    "passes": 3886,
+                    "fails": 0
+                },
+                "read player username matches": {
+                    "id": "ca29bf7ab95d2e73d6b105df4cdc9ccd",
+                    "passes": 3886,
+                    "fails": 0,
+                    "name": "read player username matches",
+                    "path": "::read player username matches"
+                },
+                "cached read player status is 200": {
+                    "fails": 0,
+                    "name": "cached read player status is 200",
+                    "path": "::cached read player status is 200",
+                    "id": "6435f9f70075ea2d3d3a5e66be58ec67",
+                    "passes": 3886
+                },
+                "cached read response is valid": {
+                    "name": "cached read response is valid",
+                    "path": "::cached read response is valid",
+                    "id": "1e88fdc01ac777f171d1cdb78ba409b8",
+                    "passes": 3886,
+                    "fails": 0
+                },
+                "list players status is 200": {
+                    "name": "list players status is 200",
+                    "path": "::list players status is 200",
+                    "id": "d3c7cd4f40179d895480aa2d8083393c",
+                    "passes": 3886,
+                    "fails": 0
+                },
+                "lobby created status is 201": {
+                    "id": "28f4f5e85fe0dac8fb8769fbff085af1",
+                    "passes": 2154,
+                    "fails": 0,
+                    "name": "lobby created status is 201",
+                    "path": "::lobby created status is 201"
+                },
+                "lobby has valid id": {
+                    "name": "lobby has valid id",
+                    "path": "::lobby has valid id",
+                    "id": "cbcc4e7eb913460a29f1e24d06270743",
+                    "passes": 2154,
+                    "fails": 0
+                },
+                "replayed lobby status is 201": {
+                    "fails": 0,
+                    "name": "replayed lobby status is 201",
+                    "path": "::replayed lobby status is 201",
+                    "id": "a52ef57fe2eefcdd9abf14d7670fb359",
+                    "passes": 2154
+                },
+                "replayed header present": {
+                    "name": "replayed header present",
+                    "path": "::replayed header present",
+                    "id": "3d0aaeba629ebb67614b0c954d6f519e",
+                    "passes": 2154,
+                    "fails": 0
+                },
+                "player 1 join status is 200": {
+                    "id": "6cc953f70f6ae09649c85774c99edec9",
+                    "passes": 2154,
+                    "fails": 0,
+                    "name": "player 1 join status is 200",
+                    "path": "::player 1 join status is 200"
+                },
+                "player 2 join status is 200": {
+                    "name": "player 2 join status is 200",
+                    "path": "::player 2 join status is 200",
+                    "id": "a2d384cb546850ee07ffd6c11777403c",
+                    "passes": 2154,
+                    "fails": 0
+                },
+                "player 3 join rejected with 409 Conflict": {
+                    "name": "player 3 join rejected with 409 Conflict",
+                    "path": "::player 3 join rejected with 409 Conflict",
+                    "id": "ec869d1637f176be018d7b0698f6db25",
+                    "passes": 2154,
+                    "fails": 0
+                },
+                "error code is CAPACITY_EXCEEDED": {
+                    "path": "::error code is CAPACITY_EXCEEDED",
+                    "id": "61fafdc7702aa81c9a67baefdf0b2197",
+                    "passes": 2154,
+                    "fails": 0,
+                    "name": "error code is CAPACITY_EXCEEDED"
+                },
+                "match started status is 200": {
+                    "fails": 0,
+                    "name": "match started status is 200",
+                    "path": "::match started status is 200",
+                    "id": "41480abfc5b7e202276e49136f003247",
+                    "passes": 2154
+                },
+                "match completed status is 200": {
+                    "name": "match completed status is 200",
+                    "path": "::match completed status is 200",
+                    "id": "458d5463fa2c3a135e8810cb2d9f4e3a",
+                    "passes": 2154,
+                    "fails": 0
+                }
+            },
+        "name": ""
+    }
+}
