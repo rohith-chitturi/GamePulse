@@ -13,6 +13,8 @@ import com.gamepulse.player.model.PlayerStatus;
 import com.gamepulse.player.service.PlayerService;
 import com.gamepulse.session.dto.MatchSessionResponse;
 import com.gamepulse.session.service.MatchSessionService;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -37,6 +39,9 @@ public class MatchmakingService {
     private final MatchmakingTicketRepository ticketRepository;
     private final PlayerService playerService;
     private final MatchSessionService matchSessionService;
+
+    @PersistenceContext
+    private EntityManager entityManager;
 
     @Value("${gamepulse.matchmaking.base-tolerance:100}")
     private int baseTolerance;
@@ -65,7 +70,7 @@ public class MatchmakingService {
         }
 
         if (player.getStatus() == PlayerStatus.IN_MATCH || player.getStatus() == PlayerStatus.IN_QUEUE) {
-            throw new IllegalStateException(String.format("Player %s is currently not eligible to enqueue (status=%s)", player.getId(), player.getStatus()));
+            throw new InvalidStateTransitionException("Player", player.getStatus().name(), PlayerStatus.IN_QUEUE.name());
         }
 
         MatchmakingTicket ticket = new MatchmakingTicket(player.getId(), player.getMmr());
@@ -74,7 +79,11 @@ public class MatchmakingService {
         log.info("Player {} entered matchmaking queue: ticketId={}, mmr={}", player.getId(), saved.getId(), saved.getPlayerMmr());
 
         // Attempt deterministic match evaluation
-        evaluateMatches();
+        try {
+            evaluateMatches();
+        } catch (Exception ex) {
+            log.warn("Matchmaking evaluation skipped due to concurrent match race: {}", ex.getMessage());
+        }
 
         // Reload ticket state in case it matched immediately
         MatchmakingTicket current = ticketRepository.findById(saved.getId()).orElse(saved);
@@ -113,6 +122,13 @@ public class MatchmakingService {
     @Transactional
     public List<MatchSessionResponse> evaluateMatches() {
         List<MatchmakingTicket> queuedTickets = ticketRepository.findByStatusOrderByEnqueuedAtAsc(TicketStatus.QUEUED);
+        if (entityManager != null) {
+            for (MatchmakingTicket candidate : queuedTickets) {
+                if (entityManager.contains(candidate)) {
+                    entityManager.detach(candidate);
+                }
+            }
+        }
         List<MatchSessionResponse> formedMatches = new ArrayList<>();
         Set<UUID> matchedTicketIds = new HashSet<>();
         Instant now = Instant.now();
