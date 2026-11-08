@@ -1,0 +1,23 @@
+# Production Configuration Profile
+# Active when SPRING_PROFILES_ACTIVE=prod
+
+gamepulse:
+  chaos:
+    enabled: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "health,info,prometheus,metrics"
+  endpoint:
+    health:
+      show-details: when-authorized
+      probes:
+        enabled: true
+
+logging:
+  level:
+    root: INFO
+    com.gamepulse: INFO
+    io.github.resilience4j: WARN

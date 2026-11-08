@@ -1,0 +1,21 @@
+# Development Configuration Profile
+# Active when SPRING_PROFILES_ACTIVE=dev
+
+gamepulse:
+  chaos:
+    enabled: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "health,info,prometheus,metrics,circuitbreakers,circuitbreakerevents,retries,retryevents"
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    root: INFO
+    com.gamepulse: DEBUG
+    io.github.resilience4j: INFO

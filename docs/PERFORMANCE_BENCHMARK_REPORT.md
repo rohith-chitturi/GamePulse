@@ -103,7 +103,22 @@ During initial baseline benchmarking, two distinct performance and concurrency b
 ### Scalability Limit & Saturation Analysis:
 - **Optimal Production Capacity**: The single-container GamePulse deployment with 25 PostgreSQL pool connections comfortably handles **up to 50 concurrent virtual users (~258 req/s)** with 100% SLA compliance across all p50, p90, and p95 latency targets.
 - **Throughput Saturation Ceiling**: At 100 concurrent virtual users, system throughput plateaus at **~263 req/s**. The database connection pool (25 connections) becomes fully utilized, causing request threads to wait in the HikariCP queue.
-- **Graceful Degradation**: Despite queue saturation at 100 VUs, the system demonstrates exceptional reliability: **zero connection timeouts, zero 500 internal errors, zero connection leaks, and zero data corruption**. Error rate remained strictly **0.00%**. Horizontal scaling (adding app container replicas behind a load balancer) or vertical database connection pool scaling would be the next step for > 100 concurrent VUs.
+- **Graceful Degradation**: Despite queue saturation at 100 VUs, the system demonstrates exceptional reliability: **zero connection timeouts, zero 500 internal errors, zero connection leaks, and zero data corruption**. Error rate remained strictly **0.00%**.
+
+> [!NOTE]
+> ### Engineering Deep-Dive: The 100 VU Throughput Plateau (Interview Talking Point)
+> **Question: Why did throughput plateau between 50 VUs (257.55 req/s) and 100 VUs (262.60 req/s)? Should 100 VUs be considered the optimal capacity?**
+>
+> **Answer**: No, 100 VUs should **not** be considered optimal capacity. The optimal operating point of this single-container instance is **50 VUs**, where p95 latency is 389.50 ms and all SLA thresholds are comfortably met.
+>
+> The 100 VU profile establishes a classic **resource saturation bottleneck**:
+> 1. **HikariCP Pool Limit**: The PostgreSQL connection pool is capped at 25 connections (`HIKARI_MAX_POOL_SIZE: 25`).
+> 2. **Little's Law & Queuing**: As concurrency doubled from 50 to 100 VUs with a constant pool ceiling, threads queued in memory waiting for connection checkout. Throughput gains stopped, and additional concurrency translated directly into queue wait time, increasing p95 latency from 389.5 ms to 871.72 ms.
+> 3. **Architectural Reliability**: The critical engineering takeaway is that the service did not crash, throw unhandled 500s, leak connections, or violate ACID invariants. The system degraded gracefully without a single dropped transaction (0.00% error rate across 47,336 requests).
+> 4. **Remediation Roadmap**: To scale beyond 260 req/s, the next engineering steps are:
+>    - *Vertical*: Scale PostgreSQL compute and increase `HIKARI_MAX_POOL_SIZE` to 50–75 connections.
+>    - *Horizontal*: Deploy read replicas for player profile lookups and route write-heavy matchmaking/lobby transactions to the primary.
+>    - *Caching*: Expand Redis cache hit ratio for active tickets and matchmaking candidate states.
 
 ---
 
