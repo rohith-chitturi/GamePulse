@@ -1,8 +1,6 @@
 # GamePulse Security Review & Threat Analysis
 
-> **Target Audience**: Security Engineers, Platform Architects, and Technical Evaluators  
-> **Platform Version**: 0.1.0-SNAPSHOT  
-> **Classification**: Security Architecture & Hardening Assessment  
+Security architecture overview, threat model, and hardening controls implemented in GamePulse.
 
 ---
 

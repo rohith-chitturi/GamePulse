@@ -7,10 +7,6 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 import java.util.Arrays;
 
-/**
- * Production-ready CORS configuration avoiding wildcard origins in non-development profiles.
- * Configured via gamepulse.cors.allowed-origins (or CORS_ALLOWED_ORIGINS env var).
- */
 @Configuration
 public class WebCorsConfig implements WebMvcConfigurer {
 

@@ -1,8 +1,6 @@
 # GamePulse Technical Architecture Specification
 
-> **Platform Version**: 0.1.0-SNAPSHOT  
-> **Architecture Pattern**: Domain-Driven Modular Monolith with Containerized Distributed Infrastructure  
-> **Target Audience**: Software Engineers, Distributed Systems Architects, and Technical Evaluators  
+Architecture specification detailing domain subsystems, data flows, concurrency boundaries, and deployment topology.
 
 ---
 

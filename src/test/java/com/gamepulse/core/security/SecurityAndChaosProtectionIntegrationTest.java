@@ -32,9 +32,8 @@ class SecurityAndChaosProtectionIntegrationTest {
     private ObjectMapper objectMapper;
 
     @Test
-    @DisplayName("Security: Chaos endpoints reject mutating requests with 403 Forbidden when chaos is disabled")
+    @DisplayName("Should return 403 Forbidden when chaos routes are called and chaos is disabled")
     void testChaosEndpointsDisabledByDefault() throws Exception {
-        // Attempting to toggle downstream chaos fault injection
         mockMvc.perform(post("/api/v1/resilience/chaos/downstream")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("active", true))))
@@ -43,7 +42,6 @@ class SecurityAndChaosProtectionIntegrationTest {
                 .andExpect(jsonPath("$.status", is(403)))
                 .andExpect(jsonPath("$.message", containsString("Chaos fault injection is disabled")));
 
-        // Attempting manual circuit breaker transition
         mockMvc.perform(post("/api/v1/resilience/circuit-breakers/downstreamService/transition/open"))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.errorCode", is("CHAOS_DISABLED")))
@@ -52,7 +50,7 @@ class SecurityAndChaosProtectionIntegrationTest {
     }
 
     @Test
-    @DisplayName("Security: Resilience status exposes chaosEnabled=false")
+    @DisplayName("Should report chaosEnabled as false in resilience status")
     void testResilienceStatusShowsChaosDisabled() throws Exception {
         mockMvc.perform(get("/api/v1/resilience/status"))
                 .andExpect(status().isOk())
@@ -60,7 +58,7 @@ class SecurityAndChaosProtectionIntegrationTest {
     }
 
     @Test
-    @DisplayName("Security: Essential HTTP security headers are populated on all responses")
+    @DisplayName("Should apply standard security headers to API responses")
     void testSecurityHeadersEnforced() throws Exception {
         mockMvc.perform(get("/api/v1/system/info"))
                 .andExpect(status().isOk())
@@ -73,7 +71,7 @@ class SecurityAndChaosProtectionIntegrationTest {
     }
 
     @Test
-    @DisplayName("Security: REST API routes enforce no-cache headers to protect transient gameplay state")
+    @DisplayName("Should apply no-cache headers to /api routes")
     void testApiCacheHeadersEnforced() throws Exception {
         mockMvc.perform(get("/api/v1/system/info"))
                 .andExpect(status().isOk())

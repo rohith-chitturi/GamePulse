@@ -1,8 +1,6 @@
 # GamePulse Operations Runbook
 
-> **Target Audience**: Site Reliability Engineers (SRE), Platform Engineers, DevOps, and On-Call Engineers  
-> **Platform Version**: 0.1.0-SNAPSHOT  
-> **Classification**: Production Operations Manual & Incident Response  
+Operational guide for deploying, monitoring, and troubleshooting GamePulse services in production environments.
 
 ---
 

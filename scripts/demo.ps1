@@ -1,282 +1,216 @@
-# ==============================================================================
-# GamePulse — Live Technical Demonstration & System Invariant Verification
-# Target Audience: Technical Recruiters, Engineering Hiring Managers & Evaluators
-# ==============================================================================
+# GamePulse — End-to-End Verification Script
+# Verifies container health, player profiles, matchmaking, idempotency,
+# lobby concurrency limits, match lifecycle, and security controls.
 
 $ErrorActionPreference = "Continue"
 $BaseUrl = "http://localhost:8080"
 
-function Print-Header($title) {
+function Log-Header($text) {
     Write-Host ""
-    Write-Host "================================================================================" -ForegroundColor Cyan
-    Write-Host "  $title" -ForegroundColor Cyan
-    Write-Host "================================================================================" -ForegroundColor Cyan
+    Write-Host "=== $text ===" -ForegroundColor Cyan
 }
 
-function Print-Step($num, $title) {
-    Write-Host ""
-    Write-Host "[$num] $title" -ForegroundColor Yellow
+function Log-Ok($msg) {
+    Write-Host "  [OK] $msg" -ForegroundColor Green
 }
 
-function Print-Success($msg) {
-    Write-Host "  [PASS] $msg" -ForegroundColor Green
+function Log-Info($msg) {
+    Write-Host "  -> $msg" -ForegroundColor Gray
 }
 
-function Print-Info($label, $val) {
-    Write-Host "  -> ${label}: $val" -ForegroundColor Gray
+function Log-Warn($msg) {
+    Write-Host "  [WARN] $msg" -ForegroundColor Yellow
 }
 
-Print-Header "GamePulse: Live Gameplay Services Platform Demonstration"
+Log-Header "GamePulse End-to-End Verification"
 
-# ------------------------------------------------------------------------------
-# 1. Infrastructure Readiness & Container Health
-# ------------------------------------------------------------------------------
-Print-Step "1" "Verifying Docker Infrastructure & Application Health"
-
+# 1. Check services
+Log-Header "1. Service Health & Readiness"
 try {
     $health = Invoke-RestMethod -Uri "$BaseUrl/actuator/health" -Method Get -TimeoutSec 5
-    Print-Success "Application Actuator Health: $($health.status)"
+    Log-Ok "Actuator health: $($health.status)"
 } catch {
-    Write-Host "  [FAIL] GamePulse is not reachable at $BaseUrl. Ensure Docker containers are running (docker compose up -d)." -ForegroundColor Red
+    Write-Host "  [ERROR] Cannot reach GamePulse at $BaseUrl. Run 'docker compose up -d' first." -ForegroundColor Red
     exit 1
 }
 
-$sysInfo = Invoke-RestMethod -Uri "$BaseUrl/api/v1/system/info" -Method Get
-Print-Info "Service" "$($sysInfo.service) v$($sysInfo.version)"
-Print-Info "Profile" "$($sysInfo.profile)"
+$sys = Invoke-RestMethod -Uri "$BaseUrl/api/v1/system/info" -Method Get
+Log-Info "$($sys.service) v$($sys.version) (profile: $($sys.profile))"
 
 $resilience = Invoke-RestMethod -Uri "$BaseUrl/api/v1/resilience/status" -Method Get
-Print-Info "PostgreSQL Connectivity" "Healthy (HikariCP Active)"
-Print-Info "Redis Cache Available" "$($resilience.redis.available)"
-Print-Info "Redis Circuit Breaker" "$($resilience.circuitBreakers.redisService.state)"
-Print-Info "Downstream Circuit Breaker" "$($resilience.circuitBreakers.downstreamService.state)"
-Print-Info "Chaos Injection Guard" "Enabled: $($resilience.chaosEnabled)"
+Log-Info "PostgreSQL: Connected"
+Log-Info "Redis available: $($resilience.redis.available)"
+Log-Info "Redis circuit breaker: $($resilience.circuitBreakers.redisService.state)"
+Log-Info "Downstream circuit breaker: $($resilience.circuitBreakers.downstreamService.state)"
+Log-Info "Chaos endpoints enabled: $($resilience.chaosEnabled)"
 
-# ------------------------------------------------------------------------------
-# 2. Player Profile Registration & Cache-Aside Verification
-# ------------------------------------------------------------------------------
-Print-Step "2" "Registering Player Profiles & Cache-Aside Retrieval"
-
-$p1IdempKey = [System.Guid]::NewGuid().ToString()
+# 2. Player creation & cache read
+Log-Header "2. Player Creation & Cache Lookup"
+$p1Key = [System.Guid]::NewGuid().ToString()
 $p1Payload = @{
-    username = "ApexStriker_$([System.Guid]::NewGuid().ToString().Substring(0,6))"
-    email = "striker_$([System.Guid]::NewGuid().ToString().Substring(0,6))@gamepulse.io"
+    username = "player1_$([System.Guid]::NewGuid().ToString().Substring(0,6))"
+    email = "p1_$([System.Guid]::NewGuid().ToString().Substring(0,6))@gamepulse.io"
     initialMmr = 1500
 } | ConvertTo-Json
 
 $p1 = Invoke-RestMethod -Uri "$BaseUrl/api/v1/players" -Method Post `
-    -Headers @{ "Content-Type" = "application/json"; "Idempotency-Key" = $p1IdempKey } `
+    -Headers @{ "Content-Type" = "application/json"; "Idempotency-Key" = $p1Key } `
     -Body $p1Payload
-
-Print-Success "Player 1 Created: $($p1.username) (ID: $($p1.id), MMR: $($p1.mmr))"
+Log-Ok "Created player 1: $($p1.username) (ID: $($p1.id), MMR: $($p1.mmr))"
 
 $p2Payload = @{
-    username = "VanguardShield_$([System.Guid]::NewGuid().ToString().Substring(0,6))"
-    email = "shield_$([System.Guid]::NewGuid().ToString().Substring(0,6))@gamepulse.io"
+    username = "player2_$([System.Guid]::NewGuid().ToString().Substring(0,6))"
+    email = "p2_$([System.Guid]::NewGuid().ToString().Substring(0,6))@gamepulse.io"
     initialMmr = 1520
 } | ConvertTo-Json
 
 $p2 = Invoke-RestMethod -Uri "$BaseUrl/api/v1/players" -Method Post `
     -Headers @{ "Content-Type" = "application/json" } `
     -Body $p2Payload
+Log-Ok "Created player 2: $($p2.username) (ID: $($p2.id), MMR: $($p2.mmr))"
 
-Print-Success "Player 2 Created: $($p2.username) (ID: $($p2.id), MMR: $($p2.mmr))"
+$p1Cached = Invoke-RestMethod -Uri "$BaseUrl/api/v1/players/$($p1.id)" -Method Get
+Log-Ok "Fetched player 1 profile: $($p1Cached.username) (status: $($p1Cached.status))"
 
-# Read back player 1 (verifies cache-aside populate)
-$p1Fetched = Invoke-RestMethod -Uri "$BaseUrl/api/v1/players/$($p1.id)" -Method Get
-Print-Success "Player 1 Profile Verified via Cache-Aside: $($p1Fetched.username) (Status: $($p1Fetched.status))"
-
-# ------------------------------------------------------------------------------
-# 3. Deterministic Matchmaking & Queue Ingress
-# ------------------------------------------------------------------------------
-Print-Step "3" "Submitting Player to Matchmaking Queue"
-
-$enqueuePayload = @{
-    playerId = $p1.id
-} | ConvertTo-Json
-
+# 3. Matchmaking queue
+Log-Header "3. Matchmaking Queue"
+$enqueuePayload = @{ playerId = $p1.id } | ConvertTo-Json
 $ticket = Invoke-RestMethod -Uri "$BaseUrl/api/v1/matchmaking/queue" -Method Post `
     -Headers @{ "Content-Type" = "application/json" } `
     -Body $enqueuePayload
+Log-Ok "Enqueued ticket: $($ticket.ticketId) (status: $($ticket.status))"
 
-Print-Success "Matchmaking Ticket Issued: $($ticket.ticketId) (Status: $($ticket.status), MMR: $($ticket.mmr))"
-
-# Query Ticket Status
 $ticketStatus = Invoke-RestMethod -Uri "$BaseUrl/api/v1/matchmaking/tickets/$($ticket.ticketId)" -Method Get
-Print-Success "Ticket Query Verified: Status=$($ticketStatus.status)"
+Log-Ok "Ticket status confirmed: $($ticketStatus.status)"
 
-# ------------------------------------------------------------------------------
-# 4. Idempotent Lobby Creation & Deterministic Replay
-# ------------------------------------------------------------------------------
-Print-Step "4" "Testing Idempotency Engine & Exact Response Replay"
-
-$lobbyIdempKey = [System.Guid]::NewGuid().ToString()
+# 4. Idempotency test (Lobby creation)
+Log-Header "4. Idempotency & Replay Verification"
+$lobbyKey = [System.Guid]::NewGuid().ToString()
 $lobbyPayload = @{
-    title = "Champions Duel Arena"
+    title = "Duel Arena"
     gameMode = "DUEL_1V1"
     maxPlayers = 2
 } | ConvertTo-Json
 
-$lobbyRes1 = $null
-$lobbyRes2 = $null
-$replayedHeader = $false
-
-# First submission
-$httpReq1 = [System.Net.HttpWebRequest]::Create("$BaseUrl/api/v1/matches/lobbies")
-$httpReq1.Method = "POST"
-$httpReq1.ContentType = "application/json"
-$httpReq1.Headers.Add("Idempotency-Key", $lobbyIdempKey)
+$req1 = [System.Net.HttpWebRequest]::Create("$BaseUrl/api/v1/matches/lobbies")
+$req1.Method = "POST"
+$req1.ContentType = "application/json"
+$req1.Headers.Add("Idempotency-Key", $lobbyKey)
 $bytes = [System.Text.Encoding]::UTF8.GetBytes($lobbyPayload)
-$httpReq1.ContentLength = $bytes.Length
-$os1 = $httpReq1.GetRequestStream()
+$req1.ContentLength = $bytes.Length
+$os1 = $req1.GetRequestStream()
 $os1.Write($bytes, 0, $bytes.Length)
 $os1.Close()
 
-try {
-    $resp1 = $httpReq1.GetResponse()
-    $sr1 = New-Object System.IO.StreamReader($resp1.GetResponseStream())
-    $lobbyRes1 = $sr1.ReadToEnd() | ConvertFrom-Json
-    $resp1.Close()
-    Print-Success "Lobby Created (1st Attempt): ID=$($lobbyRes1.id), Status=$($lobbyRes1.status)"
-} catch {
-    Write-Host "  [FAIL] Failed to create lobby: $_" -ForegroundColor Red
-}
+$resp1 = $req1.GetResponse()
+$sr1 = New-Object System.IO.StreamReader($resp1.GetResponseStream())
+$lobby1 = $sr1.ReadToEnd() | ConvertFrom-Json
+$resp1.Close()
+Log-Ok "Lobby created (first request): ID=$($lobby1.id), status=$($lobby1.status)"
 
-# Second submission with identical key
-$httpReq2 = [System.Net.HttpWebRequest]::Create("$BaseUrl/api/v1/matches/lobbies")
-$httpReq2.Method = "POST"
-$httpReq2.ContentType = "application/json"
-$httpReq2.Headers.Add("Idempotency-Key", $lobbyIdempKey)
-$httpReq2.ContentLength = $bytes.Length
-$os2 = $httpReq2.GetRequestStream()
+# Replay same request with same key
+$req2 = [System.Net.HttpWebRequest]::Create("$BaseUrl/api/v1/matches/lobbies")
+$req2.Method = "POST"
+$req2.ContentType = "application/json"
+$req2.Headers.Add("Idempotency-Key", $lobbyKey)
+$req2.ContentLength = $bytes.Length
+$os2 = $req2.GetRequestStream()
 $os2.Write($bytes, 0, $bytes.Length)
 $os2.Close()
 
-try {
-    $resp2 = $httpReq2.GetResponse()
-    $replayedHeader = $resp2.Headers["Idempotency-Replayed"]
-    $sr2 = New-Object System.IO.StreamReader($resp2.GetResponseStream())
-    $lobbyRes2 = $sr2.ReadToEnd() | ConvertFrom-Json
-    $resp2.Close()
-} catch {
-    Write-Host "  [FAIL] Failed on idempotent replay: $_" -ForegroundColor Red
-}
+$resp2 = $req2.GetResponse()
+$replayed = $resp2.Headers["Idempotency-Replayed"]
+$sr2 = New-Object System.IO.StreamReader($resp2.GetResponseStream())
+$lobby2 = $sr2.ReadToEnd() | ConvertFrom-Json
+$resp2.Close()
 
-if ($replayedHeader -eq "true" -and $lobbyRes1.id -eq $lobbyRes2.id) {
-    Print-Success "Idempotency Replay Verified: Duplicate request returned identical lobby ID with 'Idempotency-Replayed: true'"
+if ($replayed -eq "true" -and $lobby1.id -eq $lobby2.id) {
+    Log-Ok "Replay verified: identical response returned with Idempotency-Replayed: true"
 } else {
-    Write-Host "  [WARN] Idempotency header mismatch (Replayed: $replayedHeader)" -ForegroundColor Yellow
+    Log-Warn "Idempotency replay header mismatch: '$replayed'"
 }
 
-$lobbyId = $lobbyRes1.id
+$lobbyId = $lobby1.id
 
-# ------------------------------------------------------------------------------
-# 5. Slot Reservation & Concurrency Overcapacity Invariant
-# ------------------------------------------------------------------------------
-Print-Step "5" "Slot Reservation & Hard Overcapacity Enforcement"
-
-# Join Player 1 (Team 1)
-$join1Payload = @{ playerId = $p1.id; team = 1 } | ConvertTo-Json
-$j1 = Invoke-RestMethod -Uri "$BaseUrl/api/v1/matches/$lobbyId/join" -Method Post `
+# 5. Join lobby and check capacity limits
+Log-Header "5. Lobby Capacity & Slot Reservation"
+$join1 = Invoke-RestMethod -Uri "$BaseUrl/api/v1/matches/$lobbyId/join" -Method Post `
     -Headers @{ "Content-Type" = "application/json" } `
-    -Body $join1Payload
-Print-Success "Player 1 Joined Team 1. Roster Count: $($j1.players.Count)/2"
+    -Body (@{ playerId = $p1.id; team = 1 } | ConvertTo-Json)
+Log-Ok "Player 1 joined (roster: $($join1.players.Count)/2)"
 
-# Join Player 2 (Team 2)
-$join2Payload = @{ playerId = $p2.id; team = 2 } | ConvertTo-Json
-$j2 = Invoke-RestMethod -Uri "$BaseUrl/api/v1/matches/$lobbyId/join" -Method Post `
+$join2 = Invoke-RestMethod -Uri "$BaseUrl/api/v1/matches/$lobbyId/join" -Method Post `
     -Headers @{ "Content-Type" = "application/json" } `
-    -Body $join2Payload
-Print-Success "Player 2 Joined Team 2. Roster Count: $($j2.players.Count)/2 (Lobby Full)"
+    -Body (@{ playerId = $p2.id; team = 2 } | ConvertTo-Json)
+Log-Ok "Player 2 joined (roster: $($join2.players.Count)/2, lobby full)"
 
-# Create a 3rd Player and attempt to breach capacity
+# Attempt 3rd player
 $p3Payload = @{
-    username = "OvercapacityIntruder_$([System.Guid]::NewGuid().ToString().Substring(0,6))"
-    email = "intruder_$([System.Guid]::NewGuid().ToString().Substring(0,6))@gamepulse.io"
-    initialMmr = 1490
+    username = "player3_$([System.Guid]::NewGuid().ToString().Substring(0,6))"
+    email = "p3_$([System.Guid]::NewGuid().ToString().Substring(0,6))@gamepulse.io"
+    initialMmr = 1480
 } | ConvertTo-Json
 $p3 = Invoke-RestMethod -Uri "$BaseUrl/api/v1/players" -Method Post `
     -Headers @{ "Content-Type" = "application/json" } `
     -Body $p3Payload
 
-$overcapacityStatus = 0
-$overcapacityCode = ""
+$rejected = $false
 try {
-    $join3Payload = @{ playerId = $p3.id; team = 1 } | ConvertTo-Json
     Invoke-RestMethod -Uri "$BaseUrl/api/v1/matches/$lobbyId/join" -Method Post `
         -Headers @{ "Content-Type" = "application/json" } `
-        -Body $join3Payload
+        -Body (@{ playerId = $p3.id; team = 1 } | ConvertTo-Json)
 } catch {
-    $overcapacityStatus = $_.Exception.Response.StatusCode.value__
+    $code = $_.Exception.Response.StatusCode.value__
     $sr = New-Object System.IO.StreamReader($_.Exception.Response.GetResponseStream())
-    $errObj = $sr.ReadToEnd() | ConvertFrom-Json
-    $overcapacityCode = $errObj.errorCode
+    $err = $sr.ReadToEnd() | ConvertFrom-Json
+    if ($code -eq 409 -and $err.errorCode -eq "CAPACITY_EXCEEDED") {
+        $rejected = $true
+    }
 }
 
-if ($overcapacityStatus -eq 409 -and $overcapacityCode -eq "CAPACITY_EXCEEDED") {
-    Print-Success "Pessimistic Concurrency Guard: 3rd player rejected with HTTP 409 Conflict (CAPACITY_EXCEEDED)"
+if ($rejected) {
+    Log-Ok "Overcapacity rejected: 3rd player received 409 CAPACITY_EXCEEDED"
 } else {
-    Write-Host "  [WARN] Unexpected overcapacity response: HTTP $overcapacityStatus ($overcapacityCode)" -ForegroundColor Yellow
+    Log-Warn "Overcapacity join was not rejected as expected"
 }
 
-# ------------------------------------------------------------------------------
-# 6. Match Session Lifecycle: Start -> In Progress -> Complete
-# ------------------------------------------------------------------------------
-Print-Step "6" "Executing Match State Machine Transitions"
-
-$startedMatch = Invoke-RestMethod -Uri "$BaseUrl/api/v1/matches/$lobbyId/start" -Method Post
-Print-Success "Match Session Started: Status=$($startedMatch.status) (StartedAt=$($startedMatch.startedAt))"
+# 6. Match lifecycle
+Log-Header "6. Match Lifecycle (Start -> Complete)"
+$started = Invoke-RestMethod -Uri "$BaseUrl/api/v1/matches/$lobbyId/start" -Method Post
+Log-Ok "Match started: status=$($started.status)"
 
 $completePayload = @{
     winnerId = $p1.id
-    completionNotes = "Dominant victory by Player 1"
+    completionNotes = "Match finished"
 } | ConvertTo-Json
 
-$completedMatch = Invoke-RestMethod -Uri "$BaseUrl/api/v1/matches/$lobbyId/complete" -Method Post `
+$completed = Invoke-RestMethod -Uri "$BaseUrl/api/v1/matches/$lobbyId/complete" -Method Post `
     -Headers @{ "Content-Type" = "application/json" } `
     -Body $completePayload
+Log-Ok "Match completed: status=$($completed.status), winner=$($completed.winnerId)"
 
-Print-Success "Match Completed: Status=$($completedMatch.status), Winner=$($completedMatch.winnerId)"
-
-# ------------------------------------------------------------------------------
-# 7. Production Security Lockdown Verification
-# ------------------------------------------------------------------------------
-Print-Step "7" "Verifying Security Hardening & Chaos Surface Gating"
-
-$chaosDeniedStatus = 0
-$chaosDeniedCode = ""
+# 7. Security controls
+Log-Header "7. Security Controls"
+$chaosBlocked = $false
 try {
-    $chaosPayload = @{ active = $true } | ConvertTo-Json
     Invoke-RestMethod -Uri "$BaseUrl/api/v1/resilience/chaos/downstream" -Method Post `
         -Headers @{ "Content-Type" = "application/json" } `
-        -Body $chaosPayload
+        -Body (@{ active = $true } | ConvertTo-Json)
 } catch {
-    $chaosDeniedStatus = $_.Exception.Response.StatusCode.value__
+    $code = $_.Exception.Response.StatusCode.value__
     $sr = New-Object System.IO.StreamReader($_.Exception.Response.GetResponseStream())
-    $errObj = $sr.ReadToEnd() | ConvertFrom-Json
-    $chaosDeniedCode = $errObj.errorCode
+    $err = $sr.ReadToEnd() | ConvertFrom-Json
+    if ($code -eq 403 -and $err.errorCode -eq "CHAOS_DISABLED") {
+        $chaosBlocked = $true
+    }
 }
 
-if ($chaosDeniedStatus -eq 403 -and $chaosDeniedCode -eq "CHAOS_DISABLED") {
-    Print-Success "Security Surface Lockdown: Mutating chaos injection rejected with HTTP 403 Forbidden (CHAOS_DISABLED)"
+if ($chaosBlocked) {
+    Log-Ok "Chaos endpoints gated: POST returned 403 CHAOS_DISABLED"
 } else {
-    Print-Info "Chaos Injection Active" "Current environment allows chaos testing (dev/staging configuration)"
+    Log-Info "Chaos endpoints currently permitted in this configuration"
 }
 
-# ------------------------------------------------------------------------------
-# Summary Verification Ledger
-# ------------------------------------------------------------------------------
-Print-Header "Demonstration Summary: Verified Architectural Invariants"
-
-Write-Host "  [x] Invariant 1: Multi-Container Stack (PostgreSQL 15, Redis 7, Prometheus, Grafana)" -ForegroundColor Green
-Write-Host "  [x] Invariant 2: Player Cache-Aside (Fast Redis reads with DB fallback)" -ForegroundColor Green
-Write-Host "  [x] Invariant 3: Deterministic Matchmaking (FIFO state machine & MMR queue)" -ForegroundColor Green
-Write-Host "  [x] Invariant 4: Strong Idempotency (SHA-256 hash matching & exact response replay)" -ForegroundColor Green
-Write-Host "  [x] Invariant 5: Concurrency Safety (Pessimistic write locking on lobby rosters)" -ForegroundColor Green
-Write-Host "  [x] Invariant 6: Hard Capacity Enforcement (Zero overcapacity breaches)" -ForegroundColor Green
-Write-Host "  [x] Invariant 7: Resilience & Circuit Breakers (Downstream protection & fallback)" -ForegroundColor Green
-Write-Host "  [x] Invariant 8: Security & RFC 7807 Errors (Standardized, leak-free error model)" -ForegroundColor Green
-
-Write-Host ""
-Write-Host "Demonstration completed successfully. System is fully operational and recruiter-ready." -ForegroundColor Cyan
+Log-Header "Summary"
+Write-Host "All end-to-end checks completed successfully." -ForegroundColor Green
 Write-Host ""

@@ -105,20 +105,20 @@ During initial baseline benchmarking, two distinct performance and concurrency b
 - **Throughput Saturation Ceiling**: At 100 concurrent virtual users, system throughput plateaus at **~263 req/s**. The database connection pool (25 connections) becomes fully utilized, causing request threads to wait in the HikariCP queue.
 - **Graceful Degradation**: Despite queue saturation at 100 VUs, the system demonstrates exceptional reliability: **zero connection timeouts, zero 500 internal errors, zero connection leaks, and zero data corruption**. Error rate remained strictly **0.00%**.
 
-> [!NOTE]
-> ### Engineering Deep-Dive: The 100 VU Throughput Plateau (Interview Talking Point)
-> **Question: Why did throughput plateau between 50 VUs (257.55 req/s) and 100 VUs (262.60 req/s)? Should 100 VUs be considered the optimal capacity?**
->
-> **Answer**: No, 100 VUs should **not** be considered optimal capacity. The optimal operating point of this single-container instance is **50 VUs**, where p95 latency is 389.50 ms and all SLA thresholds are comfortably met.
->
-> The 100 VU profile establishes a classic **resource saturation bottleneck**:
-> 1. **HikariCP Pool Limit**: The PostgreSQL connection pool is capped at 25 connections (`HIKARI_MAX_POOL_SIZE: 25`).
-> 2. **Little's Law & Queuing**: As concurrency doubled from 50 to 100 VUs with a constant pool ceiling, threads queued in memory waiting for connection checkout. Throughput gains stopped, and additional concurrency translated directly into queue wait time, increasing p95 latency from 389.5 ms to 871.72 ms.
-> 3. **Architectural Reliability**: The critical engineering takeaway is that the service did not crash, throw unhandled 500s, leak connections, or violate ACID invariants. The system degraded gracefully without a single dropped transaction (0.00% error rate across 47,336 requests).
-> 4. **Remediation Roadmap**: To scale beyond 260 req/s, the next engineering steps are:
->    - *Vertical*: Scale PostgreSQL compute and increase `HIKARI_MAX_POOL_SIZE` to 50–75 connections.
->    - *Horizontal*: Deploy read replicas for player profile lookups and route write-heavy matchmaking/lobby transactions to the primary.
->    - *Caching*: Expand Redis cache hit ratio for active tickets and matchmaking candidate states.
+### 4.1 Connection Pool Saturation at 100 VUs
+
+Throughput grew steadily from 25 VUs (207.78 req/s) to 50 VUs (257.55 req/s), but plateaued at 100 VUs (262.60 req/s).
+
+This plateau reflects a clear database connection pool bottleneck:
+- The HikariCP pool is configured with `maximum-pool-size: 25`.
+- At 50 concurrent VUs, average latency was 124.68 ms and connections were returned to the pool quickly enough to sustain traffic without thread queuing.
+- At 100 concurrent VUs, all 25 connections were continuously saturated by in-flight transactions. Incoming requests queued in memory waiting for connection checkout, increasing p95 latency to 871.72 ms.
+- Because the bottleneck was queue wait time rather than crashes or failures, availability remained 100% with zero connection leaks, zero unhandled errors, and 0.00% failure rate across 47,336 requests.
+
+50 VUs represents the optimal capacity for this single-container instance with 25 pool connections. To support higher throughput (> 300 req/s), the recommended path is:
+1. Expand PostgreSQL compute and increase `HIKARI_MAX_POOL_SIZE` to 50–75 connections.
+2. Route read-only profile traffic to read replicas, reserving primary pool connections for matchmaking and lobby transactions.
+3. Cache active queue state in Redis to reduce transactional database lookups.
 
 ---
 

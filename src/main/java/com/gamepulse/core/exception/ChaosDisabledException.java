@@ -3,8 +3,8 @@ package com.gamepulse.core.exception;
 import org.springframework.http.HttpStatus;
 
 /**
- * Thrown when artificial chaos fault injection or manual circuit breaker transition
- * is attempted in an environment where chaos engineering controls are disabled.
+ * Thrown when chaos testing or manual circuit breaker transitions
+ * are attempted while gamepulse.chaos.enabled is false.
  */
 public class ChaosDisabledException extends GamePulseException {
 
