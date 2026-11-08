@@ -1,11 +1,13 @@
 package com.gamepulse.core.resilience;
 
+import com.gamepulse.core.exception.ChaosDisabledException;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import io.github.resilience4j.retry.Retry;
 import io.github.resilience4j.retry.RetryRegistry;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -20,6 +22,7 @@ import java.util.Map;
 /**
  * REST controller providing real-time resilience status, circuit breaker states,
  * and chaos fault injection controls for empirical failure verification.
+ * Mutating chaos routes are guarded by gamepulse.chaos.enabled configuration.
  */
 @RestController
 @RequestMapping("/api/v1/resilience")
@@ -30,21 +33,27 @@ public class ResilienceController {
     private final RetryRegistry retryRegistry;
     private final DownstreamNotificationService downstreamNotificationService;
     private final RedisResilienceService redisResilienceService;
+    private final boolean chaosEnabled;
 
     public ResilienceController(CircuitBreakerRegistry circuitBreakerRegistry,
                                 RetryRegistry retryRegistry,
                                 DownstreamNotificationService downstreamNotificationService,
-                                RedisResilienceService redisResilienceService) {
+                                RedisResilienceService redisResilienceService,
+                                @Value("${gamepulse.chaos.enabled:false}") boolean chaosEnabled) {
         this.circuitBreakerRegistry = circuitBreakerRegistry;
         this.retryRegistry = retryRegistry;
         this.downstreamNotificationService = downstreamNotificationService;
         this.redisResilienceService = redisResilienceService;
+        this.chaosEnabled = chaosEnabled;
     }
 
     @GetMapping("/status")
     @Operation(summary = "Get overall resilience status across circuit breakers and cache adapters")
     public ResponseEntity<Map<String, Object>> getResilienceStatus() {
         Map<String, Object> status = new HashMap<>();
+
+        // Chaos configuration status
+        status.put("chaosEnabled", chaosEnabled);
 
         // Redis cache status
         Map<String, Object> redisStatus = new HashMap<>();
@@ -89,6 +98,10 @@ public class ResilienceController {
     @PostMapping("/chaos/downstream")
     @Operation(summary = "Toggle downstream network timeout simulation for chaos testing")
     public ResponseEntity<Map<String, Object>> toggleDownstreamChaos(@RequestBody Map<String, Boolean> payload) {
+        if (!chaosEnabled) {
+            throw new ChaosDisabledException("Chaos fault injection is disabled in this environment.");
+        }
+
         boolean active = Boolean.TRUE.equals(payload.get("active"));
         downstreamNotificationService.setChaosFaultActive(active);
 
@@ -103,6 +116,9 @@ public class ResilienceController {
     public ResponseEntity<Map<String, Object>> transitionCircuitBreaker(
             @PathVariable String name,
             @PathVariable String action) {
+        if (!chaosEnabled) {
+            throw new ChaosDisabledException("Manual circuit breaker state transitions are disabled in this environment.");
+        }
 
         CircuitBreaker cb = circuitBreakerRegistry.circuitBreaker(name);
         switch (action.toLowerCase()) {
@@ -119,4 +135,3 @@ public class ResilienceController {
         return ResponseEntity.ok(response);
     }
 }
-
